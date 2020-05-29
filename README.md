@@ -1,2 +1,2 @@
-# rochester
-A repository to quantify the affordable housing gap in Rochester, NY
+# Quantifying the Affordable Housing Gap in Rochester, NY
+By Adam Staveski and Andrea Ringer
