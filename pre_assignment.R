@@ -1,3 +1,6 @@
+#THIS IS A SAMPLE COMMENT
+#By Adam Staveski
+
 library(tidyverse)
 library(readxl)
 weo <- read_excel("data/input/WEO-2018.xlsx")
