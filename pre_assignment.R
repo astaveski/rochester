@@ -75,3 +75,5 @@ bot_three <- weo_percap %>%
   arrange(gdp_percap_2017) %>%
   select(country, gdp_percap_2017) %>%
   slice(gdp_percap_2017, 1:3)
+
+#test comment to push to master
