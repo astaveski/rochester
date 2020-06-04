@@ -54,6 +54,28 @@ pny = g[[2]]
 save(file = "pums18.RData", hny, pny)
 
 
+# Section 4: Load back the cropped data,
+rm(list = ls())
+load("pums18.RData")
+
+# The SERIALNO contains both the year and the id of a household sampled
+pny$year = substr(as.character(pny$SERIALNO),1,4)
+pny$id = substr(as.character(pny$SERIALNO),5,25)
+
+hny$year = substr(as.character(hny$SERIALNO),1,4)
+hny$id = substr(as.character(hny$SERIALNO),5,25)
+
+# Two big data structures created here: one has the person and household attributes 
+# merged into one big table. The other is the above table split into chunks,
+# one for each household.
+
+d = merge(hny,pny,by = "SERIALNO")
+#dl = split(d,d$SERIALNO) #This can eat your memory, be careful
+save(d, 
+     #dl, 
+     file = "dataset.RData")
+
+
 
 
 
