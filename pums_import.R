@@ -2,12 +2,13 @@
 # * FILE: pums_import.R
 # * PURPOSE: Import PUMS data from 2018
 # * AUTHORS: Adam Staveski
-# * DATE: May 30, 2020
+# * DATE: June 7, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
 library(survey)
 library(Hmisc)
+library(ggplot2)
 
 setwd("/Users/astav/Documents/Employment/Harvard-Bloomberg/Rochester/R/Data/PUMS")
 
@@ -35,9 +36,9 @@ hh_roc$year=substr(as.character(hh_roc$SERIALNO),1,4)
 hh_roc$id=substr(as.character(hh_roc$SERIALNO),5,25)
 
 # Sort Household Variables
-hh_roc_vars <- subset(hh_roc, select = c(SERIALNO,PUMA,ADJHSG,ADJINC,WGTP,NP,TYPE,ACR,BDSP,BLD,CONP,ELEFP,ELEP,FS,FULFP,FULP,GASFP,GASP,HFL,INSP,
-                                         MRGI,MRGP,MRGT,MRGX,RMSP,RNTM,RNTP,SMP,TEN,VACS,VALP,WATFP,WATP,YBL,FES,FINCP,FPARC,GRNTP,GRPIP,HHT,
-                                         HINCP,HUPAC,KIT,LNGI,MV,NOC,NPF,OCPIP,PARTNER,PLM,R18,R65,SMOCP,SMX,TAXAMT,WIF,WORKSTAT))
+hh_roc_vars <- subset(hh_roc, select = c(SERIALNO,PUMA,ADJHSG,ADJINC,WGTP,NP,TYPE,ACR,BDSP,BLD,CONP,ELEFP,ELEP,FS,INSP,MRGI,MRGP,MRGT,MRGX,
+                                         RMSP,RNTM,RNTP,SMP,TEN,VACS,VALP,WATFP,WATP,YBL,FES,FINCP,FPARC,GRNTP,GRPIP,HHT, HINCP,HUPAC,KIT,LNGI,
+                                         MV,NOC,NPF,OCPIP,PARTNER,PLM,R18,R65,SMOCP,SMX,TAXAMT,WIF,WORKSTAT))
 
 #hh_roc_flag <- subset(hh_roc, select = c(FACRP,FBDSP,FBLDP,FCONP,FELEP,FFINCP,FFSP,FFULP,FGASP,FGRNTP,FHFLP,FHINCP,FINSP,FKITP,FMRGIP,FMRGP,
 #                                        FMRGTP,FMRGXP,FMVP,FPLMP,FRMSP,FRNTMP,FRNTP,FSMOCP,FSMP,FSMXHP,FSMXSP,FTAXP,FTENP,FVACSP,FVALP,FWATP,
@@ -73,18 +74,27 @@ roc=merge(hh_roc_clean,p_roc_clean, by="SERIALNO", suffixes = c(".hh", ".p"))
 ## Counts ##
 summarise(hh_roc, total_units=sum(WGTP))
 
-hh_roc %>% 
-  filter(VACS==1) %>% 
+hh_roc %>%
+  filter(VACS==1) %>%
   summarise(for_rent=sum(WGTP))
 
 ## Weighted Means and Quantiles ##
+
+# Housing Characteristics
 with(hh_roc, Hmisc::wtd.mean(VALP, weights=WGTP))
-with(hh_roc, Hmisc::wtd.quantile(VALP, weights=WGTP))
+with(hh_roc, Hmisc::wtd.quantile(VALP, weights=WGTP))   # Property value
+
+with(hh_roc, Hmisc::wtd.quantile(RNTP, weights=WGTP))   # Rent paid (listed rent ONLY)
+with(hh_roc, Hmisc::wtd.quantile(GRNTP, weights=WGTP))  # Gross rent paid (listed rent + utilities)
+with(hh_roc, Hmisc::wtd.quantile(SMOCP, weights=WGTP))  # Selected monthly owner cost (mortgage, taxes, utilities)
+
+# Demographic Characteristics
+with(hh_roc, Hmisc::wtd.quantile(NP, weights=WGTP))     # Number of People
 
 ## Proportions ##
 num_rentals <- filter(hh_roc, (TEN==3) | (VACS==1)) %>% tally(wt=WGTP)
 num_vacs <- filter(hh_roc, VACS==1) %>% tally(wt=WGTP)
-vacancy_rate <- 100*(num_vacs/num_rentals)
+100*(num_vacs/num_rentals)                              # Vacancy Rate
 
 ## Standard Errors ##
 own <- filter(hh_roc, VACS==1)
@@ -92,3 +102,14 @@ pt.est <- sum(own$WGTP)
 rep.names <- paste0('WGTP', 1:80)
 rep.ests <- sapply(rep.names, function(n) sum(own[[n]]))
 sqrt((4/80) * sum((rep.ests - pt.est)^2))
+
+#-------------------------------------------------------------------------------
+# Plots
+#-------------------------------------------------------------------------------
+# Histogram
+ggplot(hh_roc, aes(x=NP, weight = WGTP)) + geom_histogram() + 
+  stat_bin(binwidth=1, geom="text", aes(label=..count..), vjust=-1.0)  # Number of Persons in Household
+ggplot(hh_roc, aes(x=ACR, weight = WGTP)) + geom_histogram() + 
+  stat_bin(binwidth=1, geom="text", aes(label=..count..), vjust=-1.0)  # Lot size (single-family homes)
+
+hh_roc %>% group_by(ACR) %>% filter(ACR > 0) %>% summarise(counted = n())
