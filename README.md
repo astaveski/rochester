@@ -12,3 +12,4 @@ By Adam Staveski and Andrea Ringer
    * How to construct weighted means and medians
    * How to construct weighted proportions
    * How to compute weighted standard errors
+   * How to create histograms with weighted data
