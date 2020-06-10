@@ -34,4 +34,4 @@ This file also examines the demographics of individuals living in overcrowded ho
 * Disability status
 
 ### Persons per Room
-Overcrowded is defined as having one or more rooms less than the listed threshold. Severely overcrowded is defined as having two or more rooms less than the listed threshold. A standard health measure of overcrowding is 1.5 persons per room.
+An alternative criteria to detrmine whether a household is overcrowded is to analyze the number of persons per room. In the UK, government guidelines suggest that a household is overcrowded if it has more than 1.5 people per room. In accordance with this standard, I define a household as "overcrowded" if the number of people in the household divided by 1.5 is greater than the number of rooms in the household. I also examine alternative thresholds of 1.0 persons per room and 2.0 persons per room.
