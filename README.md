@@ -19,8 +19,9 @@ By Adam Staveski and Andrea Ringer
 
 ## right_sized.R
 Analyzes whether Rochester's housing stock is "right-sized" for the types of households living in the City. This code does the following:
-* Imports Rochester's single-year PUMS data from 2018
-* Generates categorical income thresholds
+* Imports and prepares 2018 PUMS data in the style of pums_import.R
 * Conducts right-size analysis using two metrics:
    * Number of persons per bedroom (HUD threshold is a max of 2.0 persons per bedroom)
    * Number of persons per room (Typical standard is a max of 1.5 persons per room)
+
+### Persons per Bedroom
