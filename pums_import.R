@@ -2,7 +2,7 @@
 # * FILE: pums_import.R
 # * PURPOSE: Import PUMS data from 2018
 # * AUTHORS: Adam Staveski
-# * DATE: June 7, 2020
+# * DATE: June 10, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
@@ -26,47 +26,41 @@ p_roc <- pums_p %>%
 rm("pums_hh", "pums_p")
 
 #-------------------------------------------------------------------------------
-# Clean Person and Household Data
-#-------------------------------------------------------------------------------
-# Separate year and ID number from SERIALNO
-p_roc$year=substr(as.character(p_roc$SERIALNO),1,4)
-p_roc$id=substr(as.character(p_roc$SERIALNO),5,25)
-
-hh_roc$year=substr(as.character(hh_roc$SERIALNO),1,4)
-hh_roc$id=substr(as.character(hh_roc$SERIALNO),5,25)
-
-# Sort Household Variables
-hh_roc_vars <- subset(hh_roc, select = c(SERIALNO,PUMA,ADJHSG,ADJINC,WGTP,NP,TYPE,ACR,BDSP,BLD,CONP,ELEFP,ELEP,FS,INSP,MRGI,MRGP,MRGT,MRGX,
-                                         RMSP,RNTM,RNTP,SMP,TEN,VACS,VALP,WATFP,WATP,YBL,FES,FINCP,FPARC,GRNTP,GRPIP,HHT, HINCP,HUPAC,KIT,LNGI,
-                                         MV,NOC,NPF,OCPIP,PARTNER,PLM,R18,R65,SMOCP,SMX,TAXAMT,WIF,WORKSTAT))
-
-#hh_roc_flag <- subset(hh_roc, select = c(FACRP,FBDSP,FBLDP,FCONP,FELEP,FFINCP,FFSP,FFULP,FGASP,FGRNTP,FHFLP,FHINCP,FINSP,FKITP,FMRGIP,FMRGP,
-#                                        FMRGTP,FMRGXP,FMVP,FPLMP,FRMSP,FRNTMP,FRNTP,FSMOCP,FSMP,FSMXHP,FSMXSP,FTAXP,FTENP,FVACSP,FVALP,FWATP,
-#                                        FYBLP))
-
-hh_roc_wght <- subset(select(hh_roc, contains("SERIALNO"), starts_with("WGTP")))
-hh_roc_clean <- merge(hh_roc_vars, hh_roc_wght)
-rm(hh_roc_vars, hh_roc_wght)
-
-# Sort Person Variables
-p_roc_vars <- subset(p_roc, select = c(SERIALNO,SPORDER,PUMA,ADJINC,PWGTP,AGEP,CIT,CITWP,ENG,INTP,MAR,NWLA,NWLK,OIP,PAP,RELP,RETP,SCH,SCHG,
-                                       SCHL,SEMP,SEX,SSIP,SSP,WAGP,WKHP,WKL,WKW,DECADE,DIS,ESR,HICOV,HISP,NATIVITY,NOP,PERNP,PINCP,RAC1P))
-
-#p_roc_flag <- subset(p_roc, select = c(FAGEP,FCITP,FCITWP,FDISP,FENGP,FINTP,FMARP,FOIP,FPAP,FPERNP,FPINCP,FRACP,FRETP,FSCHGP,FSCHLP,FSCHP,
-#                                       FSEMP,FSEXP,FSSIP,FSSP,FWAGP,FWKHP,FWKLP,FWKWP))
-
-p_roc_wght <- subset(select(p_roc, contains("SERIALNO"), contains("SPORDER"), starts_with("PWGTP")))
-p_roc_clean <- merge(p_roc_vars, p_roc_wght)
-rm(p_roc_vars, p_roc_wght)
-
-#-------------------------------------------------------------------------------
 # Merge Datasets
 #-------------------------------------------------------------------------------
 # Merge household and person datasets
-roc=merge(hh_roc_clean,p_roc_clean, by="SERIALNO", suffixes = c(".hh", ".p"))
+roc=merge(hh_roc,p_roc, by="SERIALNO", suffixes = c(".hh", ".p"))
 
 # Split datasets into individual households
 #hh=split(roc,roc$SERIALNO)
+
+#-------------------------------------------------------------------------------
+# Generate Variables
+#-------------------------------------------------------------------------------
+# Separate year and ID number from SERIALNO
+roc$year=substr(as.character(roc$SERIALNO),1,4)
+roc$id=substr(as.character(roc$SERIALNO),5,25)
+
+# AMI Thresholds
+ami30 <- 74000*0.3
+ami50 <- 74000*0.5
+ami80 <- 74000*0.8
+ami100 <- 74000
+ami120 <- 74000*1.2
+
+AMI_CAT <- cut(roc$HINCP, breaks = c(0,ami30,ami50,ami80,ami120,10000000), labels = c(1,2,3,4,5), right = TRUE)
+roc <- mutate(roc,AMI_CAT)
+
+tapply(roc$PWGTP, list(roc$AMI_CAT), sum)                     # <30% AMI is largest category (28.6%)
+prop.table(tapply(roc$PWGTP, list(roc$AMI_CAT), sum))         # Other categories are 16-19% of population each
+
+# Income Quintiles
+with(roc, Hmisc::wtd.quantile(HINCP, probs = c(0.2,0.4,0.6,0.8), weights=PWGTP))
+INC_CAT <- cut(roc$HINCP, breaks = c(0,16200,30700,50700,82530,1000000), labels = c(1,2,3,4,5), right = TRUE)
+roc <- mutate(roc,INC_CAT)
+
+tapply(roc$PWGTP, list(roc$INC_CAT), sum)
+prop.table(tapply(roc$PWGTP, list(roc$INC_CAT), sum))
 
 #-------------------------------------------------------------------------------
 # Data Analysis
@@ -77,6 +71,10 @@ summarise(hh_roc, total_units=sum(WGTP))
 hh_roc %>%
   filter(VACS==1) %>%
   summarise(for_rent=sum(WGTP))
+
+hh_roc %>%
+  filter(is.na(VACS)) %>%
+  summarise(occupied=sum(WGTP))
 
 ## Weighted Means and Quantiles ##
 
@@ -89,6 +87,7 @@ with(hh_roc, Hmisc::wtd.quantile(GRNTP, weights=WGTP))  # Gross rent paid (liste
 with(hh_roc, Hmisc::wtd.quantile(SMOCP, weights=WGTP))  # Selected monthly owner cost (mortgage, taxes, utilities)
 
 # Demographic Characteristics
+with(hh_roc, Hmisc::wtd.mean(NP, weights=WGTP))
 with(hh_roc, Hmisc::wtd.quantile(NP, weights=WGTP))     # Number of People
 
 ## Proportions ##
@@ -109,7 +108,24 @@ sqrt((4/80) * sum((rep.ests - pt.est)^2))
 # Histogram
 ggplot(hh_roc, aes(x=NP, weight = WGTP)) + geom_histogram() + 
   stat_bin(binwidth=1, geom="text", aes(label=..count..), vjust=-1.0)  # Number of Persons in Household
+
+ggplot(hh_roc, aes(x=BDSP, weight = WGTP)) + geom_histogram() + 
+  stat_bin(binwidth=1, geom="text", aes(label=..count..), vjust=-1.0)  # Number of Bedrooms in Household
+
 ggplot(hh_roc, aes(x=ACR, weight = WGTP)) + geom_histogram() + 
   stat_bin(binwidth=1, geom="text", aes(label=..count..), vjust=-1.0)  # Lot size (single-family homes)
 
-hh_roc %>% group_by(ACR) %>% filter(ACR > 0) %>% summarise(counted = n())
+#-------------------------------------------------------------------------------
+# Random
+#-------------------------------------------------------------------------------
+# Count by Category
+hh_roc %>% 
+  group_by(ACR) %>% 
+  filter(ACR > 0) %>% 
+  summarise(count = n())
+
+# Tabulate
+tabulate(hh_roc$ACR)
+
+# Quantiles
+quantile(hh_roc$VALP, na.rm = TRUE)
