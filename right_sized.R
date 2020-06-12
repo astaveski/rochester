@@ -12,15 +12,22 @@ library(ggplot2)
 
 setwd("/Users/astav/Documents/Employment/Harvard-Bloomberg/Rochester/R/Data/PUMS")
 
+# Select standards for overcrowding
+bdrm  <- 2          # Options are: 2 / 1.5 / 1 bedrooms per person
+rm    <- 1.5        # Options are: 2 / 1.5 / 1 rooms per person
+
+#===============================================================================
+# Data Import and Preparation
+#===============================================================================
 #-------------------------------------------------------------------------------
 # Load PUMS Household Data and Select Rochester PUMAs
 #-------------------------------------------------------------------------------
 pums_hh <- read_csv("psam_h36.csv", guess_max = 12000)
 pums_p <- read_csv("psam_p36.csv", guess_max = 12000)
 
-hh_roc <- pums_hh %>%
+roc_hh <- pums_hh %>%
   filter(PUMA == "00902" | PUMA == "00903")
-p_roc <- pums_p %>%
+roc_p <- pums_p %>%
   filter(PUMA == "00902" | PUMA == "00903")
 
 rm("pums_hh", "pums_p")
@@ -29,12 +36,14 @@ rm("pums_hh", "pums_p")
 # Merge Datasets
 #-------------------------------------------------------------------------------
 # Merge household and person datasets
-roc=merge(hh_roc,p_roc, by="SERIALNO", suffixes = c(".hh", ".p"))
+roc=merge(roc_hh,roc_p, by="SERIALNO", suffixes = c(".hh", ".p"))
 
 #-------------------------------------------------------------------------------
 # Generate Variables
 #-------------------------------------------------------------------------------
+#--------------------------------------
 # AMI Thresholds
+#--------------------------------------
 ami30 <- 74000*0.3
 ami50 <- 74000*0.5
 ami80 <- 74000*0.8
@@ -47,7 +56,9 @@ roc <- mutate(roc,AMI_CAT)
 tapply(roc$PWGTP, list(roc$AMI_CAT), sum)                     # <30% AMI is largest category (28.6%)
 prop.table(tapply(roc$PWGTP, list(roc$AMI_CAT), sum))         # Other categories are 16-19% of population each
 
+#--------------------------------------
 # Income Quintiles
+#--------------------------------------
 with(roc, Hmisc::wtd.quantile(HINCP, probs = c(0.2,0.4,0.6,0.8), weights=PWGTP))
 INC_CAT <- cut(roc$HINCP, breaks = c(0,16200,30700,50700,82530,1000000), labels = c(1,2,3,4,5), right = TRUE)
 roc <- mutate(roc,INC_CAT)
@@ -55,12 +66,75 @@ roc <- mutate(roc,INC_CAT)
 tapply(roc$PWGTP, list(roc$INC_CAT), sum)
 prop.table(tapply(roc$PWGTP, list(roc$INC_CAT), sum))
 
+#--------------------------------------
+# Hispanic
+#--------------------------------------
+roc <- roc %>%
+  mutate(HISP_CAT = ifelse(HISP=="01",0,1))
+
+tapply(roc$PWGTP, list(roc$HISP_CAT), sum)
+prop.table(tapply(roc$PWGTP, list(roc$HISP_CAT), sum))      # 20.7% of population is Hispanic
+
+#--------------------------------------
+# Race
+#--------------------------------------
+roc <- roc %>%
+  mutate(RACE_CAT = ifelse(HISP=="01",RAC1P,10))
+
+roc %>%
+  select(RAC1P, HISP, RACE_CAT)
+
+tapply(roc$PWGTP, list(roc$RACE_CAT), sum)                  # 35.2% of population is white
+prop.table(tapply(roc$PWGTP, list(roc$RACE_CAT), sum))      # 37.2% of population is black
+
+#--------------------------------------
+# College Student
+#--------------------------------------
+roc <- roc %>%
+  mutate(COLLEGE = ifelse(SCHG== "15" | SCHG == "16",1,0)) %>%
+  mutate(COLLEGE = ifelse(is.na(SCHG),0,COLLEGE))
+
+roc %>%
+  select(COLLEGE, SCHG)
+
+tapply(roc$PWGTP, list(roc$COLLEGE), sum)                  # 10.3% of population is in college
+prop.table(tapply(roc$PWGTP, list(roc$COLLEGE), sum))      # 21,260 students
+
+#--------------------------------------
+# Age Buckets
+#--------------------------------------
+roc <- roc %>%
+  mutate(AGE_CAT = cut(roc$AGEP, breaks = c(-1,18,40,65,100), labels = c(1,2,3,4), right = FALSE))
+
+roc %>%
+  select(AGEP, AGE_CAT)
+
+tapply(roc$PWGTP, list(roc$AGE_CAT), sum)                     # 18-39 is the largest age category (38.8% of population)
+prop.table(tapply(roc$PWGTP, list(roc$AGE_CAT), sum))         # 40-64 is second largest category (27.6% of population)
+
+#--------------------------------------
+# Citizenship Status
+#--------------------------------------
+roc <- roc %>%
+  mutate(CIT_CAT = ifelse(CIT==1 | CIT==2 | CIT==3,1,0)) %>%
+  mutate(CIT_CAT = ifelse(CIT==4,2,CIT_CAT)) %>%
+  mutate(CIT_CAT = ifelse(CIT==5,3,CIT_CAT))
+
+roc %>%
+  select(CIT, CIT_CAT)
+
+tapply(roc$PWGTP, list(roc$CIT_CAT), sum)                     # 89.7% of the population was a U.S. citizen at birth
+prop.table(tapply(roc$PWGTP, list(roc$CIT_CAT), sum))         # 4.1% are naturalized citizens
+
+#===============================================================================
+# Right-Sized Analysis
+#===============================================================================
 #-------------------------------------------------------------------------------
-# Right-Sized: Bedrooms
+# Compute difference between bedroom space and bedrooms per person standard
 #-------------------------------------------------------------------------------
 # Create bed dataframe that includes necessary variables
 bed <- roc %>%
-  select(NP, BDSP, WGTP, PWGTP, SEX, AGEP, CIT, MAR, SCH, DIS, HISP, RAC1P, HINCP, INC_CAT)
+  select(NP, BDSP, WGTP, PWGTP, SEX, AGE_CAT, CIT_CAT, MAR, COLLEGE, DIS, HISP, RAC1P, RACE_CAT, HINCP, AMI_CAT, INC_CAT)
 
 # Create BEDR variables indicating bed need
 x <- ifelse(roc$NP == 1, 0, 1)                  # Recode 1-person households as needing 0 bedrooms
@@ -77,70 +151,215 @@ bed <- bed %>%
   mutate(DIFF1.5 = BDSP-BEDR1.5) %>%
   mutate(DIFF1 = BDSP-BEDR1)
 
-# Compute quantile estimates -- Households
-#with(bed, Hmisc::wtd.quantile(DIFF2, prob = c(0.00, 0.01, 0.02, 0.03, 0.05), weights=WGTP))  #  1% overcrowded & <1% severely overcrowded
-#with(bed, Hmisc::wtd.quantile(DIFF1.5, prob = c(0.00, 0.01, 0.03, 0.05, 0.1), weights=WGTP)) #  9% overcrowded &  1% severely overcrowded
-#with(bed, Hmisc::wtd.quantile(DIFF1, prob = c(0.00, 0.01, 0.03, 0.07, 0.19), weights=WGTP))  # 19% overcrowded &  3% severely overcrowded
-
-# Compute quantile estimates -- People
+# Compute quantile estimates: Person-level data
 with(bed, Hmisc::wtd.quantile(DIFF2, prob = c(0.00, 0.01, 0.02, 0.04, 0.05), weights=PWGTP))  #  4% overcrowded &  1% severely overcrowded
 with(bed, Hmisc::wtd.quantile(DIFF1.5, prob = c(0.00, 0.03, 0.05, 0.1, 0.20), weights=PWGTP)) # 19% overcrowded &  3% severely overcrowded
 with(bed, Hmisc::wtd.quantile(DIFF1, prob = c(0.00, 0.04, 0.08, 0.18, 0.41), weights=PWGTP))  # 40% overcrowded & 17% severely overcrowded
 
+#-------------------------------------------------------------------------------
+# Compute difference between room space and rooms per person standard
+#-------------------------------------------------------------------------------
+# Create room dataframe that includes necessary variables
+room <- roc %>%
+  select(NP, RMSP, WGTP, PWGTP, SEX, AGE_CAT, CIT_CAT, MAR, COLLEGE, DIS, HISP, RAC1P, RACE_CAT, HINCP, AMI_CAT, INC_CAT)
+
+# Create ROOM variables indicating room need
+room <- room %>%
+  mutate(ROOM2 = ceiling(NP/2)) %>%           # Max 2 People Per Room
+  mutate(ROOM1.5 = ceiling(NP/1.5)) %>%       # Max 1.5 People Per Room
+  mutate(ROOM1 = NP)                          # Max 1 Person Per Room
+
+# Calculate the difference between available rooms and needed rooms
+room <- room %>%
+  mutate(DIFF2 = RMSP-ROOM2) %>%
+  mutate(DIFF1.5 = RMSP-ROOM1.5) %>%
+  mutate(DIFF1 = RMSP-ROOM1)
+
+# Compute quantile estimates: Person-level data
+with(room, Hmisc::wtd.quantile(DIFF2, prob = c(0.00, 0.01, 0.03, 0.04, 0.05), weights=PWGTP))   # 0% overcrowded & 0% severely overcrowded
+with(room, Hmisc::wtd.quantile(DIFF1.5, prob = c(0.00, 0.01, 0.02, 0.03, 0.05), weights=PWGTP)) # 2% overcrowded & 0% severely overcrowded
+with(room, Hmisc::wtd.quantile(DIFF1, prob = c(0.00, 0.02, 0.03, 0.04, 0.05), weights=PWGTP))   # 4% overcrowded & 3% severely overcrowded
+
 #===============================================================================
 # Demographic Analysis -- Bedrooms
 #===============================================================================
+diff_bdrm <- paste0("DIFF", toString(bdrm))               # This changes dynamically with user specification
+
 # Flag people living in crowded households
-FLAG <- ifelse(bed$DIFF2 < 0, 1, 0)
-bed <- mutate(bed,FLAG)
+bed <- bed %>%
+  mutate(FLAG = ifelse(get(diff_bdrm) < 0, 1, 0))
 
-tapply(bed$PWGTP, list(bed$FLAG), sum)                        # 9,165 people living in crowded households
-prop.table(tapply(bed$PWGTP, list(bed$FLAG), sum))            # 4.7% of the dataset
+tapply(bed$PWGTP, list(bed$FLAG), sum)                    # 9,165 people living in crowded households
+prop.table(tapply(bed$PWGTP, list(bed$FLAG), sum))        # 4.7% of the dataset
 
-# Split data into crowded and uncrowded persons using DIFF2
+# Split data into crowded and uncrowded persons
 bed_crowd <- bed %>%
-  filter(DIFF2 < 0)
+  filter(get(diff_bdrm) < 0)
 bed_xcrowd <- bed %>%
-  filter(DIFF2 >= 0)
+  filter(get(diff_bdrm) >= 0)
 
 #-------------------------------------------------------------------------------
 # Income Tabulations: [1=30% AMI, 2=50% AMI, 3=80% AMI, 4=120% AMI, 5=121+% AMI]
 #-------------------------------------------------------------------------------
+# AMI Thresholds
+tapply(bed_crowd$PWGTP, list(bed_crowd$AMI_CAT), sum)
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$AMI_CAT), sum))     # Category 4 has most crowded people (24.4% of total)
+
+tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$AMI_CAT), sum)
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$AMI_CAT), sum))   # Category 1 has most uncrowded people (29.3% of total)
+
+# Income Quintiles
 tapply(bed_crowd$PWGTP, list(bed_crowd$INC_CAT), sum)
-prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$INC_CAT), sum))     # Category 4 has most crowded people
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$INC_CAT), sum))     # Quintile 4 has most crowded people (31.5% of total)
 
 tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$INC_CAT), sum)
-prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$INC_CAT), sum))   # Category 1 has most uncrowded people
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$INC_CAT), sum))   # Quintile 2 has most uncrowded people (20.5% of total)
 
 #-------------------------------------------------------------------------------
 # Sex Tabulations: [1=Male,2=Female]
 #-------------------------------------------------------------------------------
 tapply(bed_crowd$PWGTP, list(bed_crowd$SEX), sum)
-prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$SEX), sum))         # Females are marginally more crowded
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$SEX), sum))         # Females are marginally more crowded (51.4% of total)
 
 tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$SEX), sum)
-prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$SEX), sum))       # Females are marginally more uncrowded
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$SEX), sum))       # Females are marginally more uncrowded (52.8% of total)
 
 #-------------------------------------------------------------------------------
-# Race Tabulations: [1=White,2=Black,6=Asian,9=Two or More Races]
+# Race Tabulations: [1=White,2=Black,6=Asian,10=Hispanic]
 #-------------------------------------------------------------------------------
-tapply(bed_crowd$PWGTP, list(bed_crowd$RAC1P), sum)                   # White people make up 45.4% of crowded population
-prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$RAC1P), sum))       # Black people make up 44.0% of crowded population
+tapply(bed_crowd$PWGTP, list(bed_crowd$RACE_CAT), sum)                   # White people make up 20.5% of crowded population
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$RACE_CAT), sum))       # Black people make up 42.1% of crowded population
+                                                                         # Hisp  people make up 26.8% of crowded population
 
-tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RAC1P), sum)                 # White people make up 47.4% of uncrowded population
-prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RAC1P), sum))     # Black people make up 39.6% of uncrowded population
+tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RACE_CAT), sum)                 # White people make up 35.0% of uncrowded population
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RACE_CAT), sum))     # Black people make up 37.7% of uncrowded population
+                                                                         # Hisp  people make up 20.8% of uncrowded population
 
 #-------------------------------------------------------------------------------
 # Disability Tabulations: [1=Disability,2=No Disability]
 #-------------------------------------------------------------------------------
 tapply(bed_crowd$PWGTP, list(bed_crowd$DIS), sum)
-prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$DIS), sum))         # Disabled people make up 10.5% of crowded population
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$DIS), sum))           # Disabled people make up 10.5% of crowded population
 
 tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$DIS), sum)
-prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$DIS), sum))       # Disabled people make up 19.5% of uncrowded population
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$DIS), sum))         # Disabled people make up 19.5% of uncrowded population
 
 #-------------------------------------------------------------------------------
-# School Enrollment Tabulations: [1=Not Attending,2=Attending Public,3=Attending Private]
+# Age Group Tabulations: [1= 0-17 years, 2= 18-39 years, 3= 40-64 years, 4= 65+ years]
 #-------------------------------------------------------------------------------
-tapply(bed_crowd$PWGTP, list(bed_crowd$SCH), sum)
-prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$SCH), sum))
+tapply(bed_crowd$PWGTP, list(bed_crowd$AGE_CAT), sum)
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$AGE_CAT), sum))       # 0-17 age group makes up 48.6% of overcrowded population
+
+tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$AGE_CAT), sum)
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$AGE_CAT), sum))     # 18-40 age group makes up 37.9% of uncrowded population
+
+#-------------------------------------------------------------------------------
+# College Enrollment Tabulations: [0=Not Attending,1=Attending]
+#-------------------------------------------------------------------------------
+tapply(bed_crowd$PWGTP, list(bed_crowd$COLLEGE), sum)
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$COLLEGE), sum))       # College students make up 4.7% of crowded population
+
+tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$COLLEGE), sum)
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$COLLEGE), sum))     # College students make up 8.5% of crowded population
+
+#-------------------------------------------------------------------------------
+# Citizenship Status Tabulations: [1=U.S. Citizen,2=Naturalized Citizen,3=Non-Citizen]
+#-------------------------------------------------------------------------------
+tapply(bed_crowd$PWGTP, list(bed_crowd$CIT_CAT), sum)
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$CIT_CAT), sum))       # Naturalized and Non-Citizens make up 21.2% of crowded
+
+tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$CIT_CAT), sum)
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$CIT_CAT), sum))     # Naturalized and Non-Citizens make up 9.4% of uncrowded
+
+
+
+#===============================================================================
+# Demographic Analysis -- Rooms
+#===============================================================================
+diff_rm <- paste0("DIFF", toString(rm))                         # This changes dynamically with user specification
+
+# Flag people living in crowded households
+room <- room %>%
+  mutate(FLAG = ifelse(get(diff_rm) < 0, 1, 0))
+
+tapply(room$PWGTP, list(room$FLAG), sum)                        # 3,977 people living in crowded households
+prop.table(tapply(room$PWGTP, list(room$FLAG), sum))            # 2.0% of the dataset
+
+# Split data into crowded and uncrowded persons
+room_crowd <- room %>%
+  filter(get(diff_rm) < 0)
+room_xcrowd <- room %>%
+  filter(get(diff_rm) >= 0)
+
+#-------------------------------------------------------------------------------
+# Income Tabulations: [1=30% AMI, 2=50% AMI, 3=80% AMI, 4=120% AMI, 5=121+% AMI]
+#-------------------------------------------------------------------------------
+# AMI Thresholds
+tapply(room_crowd$PWGTP, list(room_crowd$AMI_CAT), sum)
+prop.table(tapply(room_crowd$PWGTP, list(room_crowd$AMI_CAT), sum))     # 
+
+tapply(room_xcrowd$PWGTP, list(room_xcrowd$AMI_CAT), sum)
+prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$AMI_CAT), sum))   # 
+
+# Income Quintiles
+tapply(room_crowd$PWGTP, list(room_crowd$INC_CAT), sum)
+prop.table(tapply(room_crowd$PWGTP, list(room_crowd$INC_CAT), sum))     # 
+
+tapply(room_xcrowd$PWGTP, list(room_xcrowd$INC_CAT), sum)
+prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$INC_CAT), sum))   # 
+
+#-------------------------------------------------------------------------------
+# Sex Tabulations: [1=Male,2=Female]
+#-------------------------------------------------------------------------------
+tapply(room_crowd$PWGTP, list(room_crowd$SEX), sum)
+prop.table(tapply(room_crowd$PWGTP, list(room_crowd$SEX), sum))         # 
+
+tapply(room_xcrowd$PWGTP, list(room_xcrowd$SEX), sum)
+prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$SEX), sum))       # 
+
+#-------------------------------------------------------------------------------
+# Race Tabulations: [1=White,2=Black,6=Asian,10=Hispanic]
+#-------------------------------------------------------------------------------
+tapply(room_crowd$PWGTP, list(room_crowd$RACE_CAT), sum)                   # 
+prop.table(tapply(room_crowd$PWGTP, list(room_crowd$RACE_CAT), sum))       # 
+# Hisp  people make up 26.8% of crowded population
+
+tapply(room_xcrowd$PWGTP, list(room_xcrowd$RACE_CAT), sum)                 # 
+prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$RACE_CAT), sum))     # 
+# Hisp  people make up 20.8% of uncrowded population
+
+#-------------------------------------------------------------------------------
+# Disability Tabulations: [1=Disability,2=No Disability]
+#-------------------------------------------------------------------------------
+tapply(room_crowd$PWGTP, list(room_crowd$DIS), sum)
+prop.table(tapply(room_crowd$PWGTP, list(room_crowd$DIS), sum))           # 
+
+tapply(room_xcrowd$PWGTP, list(room_xcrowd$DIS), sum)
+prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$DIS), sum))         # 
+
+#-------------------------------------------------------------------------------
+# Age Group Tabulations: [1= 0-17 years, 2= 18-39 years, 3= 40-64 years, 4= 65+ years]
+#-------------------------------------------------------------------------------
+tapply(room_crowd$PWGTP, list(room_crowd$AGE_CAT), sum)
+prop.table(tapply(room_crowd$PWGTP, list(room_crowd$AGE_CAT), sum))       # 
+
+tapply(room_xcrowd$PWGTP, list(room_xcrowd$AGE_CAT), sum)
+prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$AGE_CAT), sum))     # 
+
+#-------------------------------------------------------------------------------
+# College Enrollment Tabulations: [0=Not Attending,1=Attending]
+#-------------------------------------------------------------------------------
+tapply(room_crowd$PWGTP, list(room_crowd$COLLEGE), sum)
+prop.table(tapply(room_crowd$PWGTP, list(room_crowd$COLLEGE), sum))       # 
+
+tapply(room_xcrowd$PWGTP, list(room_xcrowd$COLLEGE), sum)
+prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$COLLEGE), sum))     # 
+
+#-------------------------------------------------------------------------------
+# Citizenship Status Tabulations: [1=U.S. Citizen,2=Naturalized Citizen,3=Non-Citizen]
+#-------------------------------------------------------------------------------
+tapply(room_crowd$PWGTP, list(room_crowd$CIT_CAT), sum)
+prop.table(tapply(room_crowd$PWGTP, list(room_crowd$CIT_CAT), sum))       # 
+
+tapply(room_xcrowd$PWGTP, list(room_xcrowd$CIT_CAT), sum)
+prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$CIT_CAT), sum))     # 
