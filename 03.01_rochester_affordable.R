@@ -3,7 +3,7 @@
 # * PURPOSE: Import and Analyze PUMS data from 2018
 # * AUTHORS: Adam Staveski, Andrea Ringer
 # * DATE CREATED: June 9, 2020
-# * DATE LAST MODIFIED: June 9, 2020
+# * DATE LAST MODIFIED: June 12, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
