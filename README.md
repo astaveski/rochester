@@ -27,11 +27,15 @@ Analyzes whether Rochester's housing stock is "right-sized" for the types of hou
 ### Persons per Bedroom
 Although final determinations are made on a case-by-case basis, HUD typically defines a household as "overcrowded" if there are more than 2.0 people per livable bedroom. In accordance with this standard, I define a household as "overcrowded" if the number of people in the household divided by two is greater than the number of bedrooms in the household. I make an exception for one-person households, who I assume are comfortable living in studio/efficiency apartments. I also examine more spacious thresholds of 1.5 persons per bedroom and 1.0 persons per bedroom. 
 
+### Persons per Room
+An alternative criteria to determine whether a household is overcrowded is to analyze the number of persons per room. In the UK, government guidelines suggest that a household is overcrowded if it has more than 1.5 people per room. In accordance with this standard, I define a household as "overcrowded" if the number of people in the household divided by 1.5 is greater than the number of rooms in the household. I also examine alternative thresholds of 1.0 persons per room and 2.0 persons per room.
+
+### Demographics
 This file also examines the demographics of individuals living in overcrowded households. These characteristics include:
 * Household income
 * Sex
 * Race
 * Disability status
-
-### Persons per Room
-An alternative criteria to detrmine whether a household is overcrowded is to analyze the number of persons per room. In the UK, government guidelines suggest that a household is overcrowded if it has more than 1.5 people per room. In accordance with this standard, I define a household as "overcrowded" if the number of people in the household divided by 1.5 is greater than the number of rooms in the household. I also examine alternative thresholds of 1.0 persons per room and 2.0 persons per room.
+* Age
+* College enrollment
+* Citizenship status
