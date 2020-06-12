@@ -236,6 +236,15 @@ prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RACE_CAT), sum))     # Black
                                                                          # Hisp  people make up 20.8% of uncrowded population
 
 #-------------------------------------------------------------------------------
+# Race Tabulations: [1=White,2=Black,6=Asian,9=Two or More Races]
+#-------------------------------------------------------------------------------
+tapply(bed_crowd$PWGTP, list(bed_crowd$RAC1P), sum)                   # White people make up 45.4% of crowded population
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$RAC1P), sum))       # Black people make up 44.0% of crowded population
+
+tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RAC1P), sum)                 # White people make up 47.4% of uncrowded population
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RAC1P), sum))     # Black people make up 39.6% of uncrowded population
+
+#-------------------------------------------------------------------------------
 # Disability Tabulations: [1=Disability,2=No Disability]
 #-------------------------------------------------------------------------------
 tapply(bed_crowd$PWGTP, list(bed_crowd$DIS), sum)
