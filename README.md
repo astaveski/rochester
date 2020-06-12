@@ -30,6 +30,7 @@ Although final determinations are made on a case-by-case basis, HUD typically de
 ### Persons per Room
 An alternative criteria to determine whether a household is overcrowded is to analyze the number of persons per room. In the UK, government guidelines suggest that a household is overcrowded if it has more than 1.5 people per room. In accordance with this standard, I define a household as "overcrowded" if the number of people in the household divided by 1.5 is greater than the number of rooms in the household. I also examine alternative thresholds of 1.0 persons per room and 2.0 persons per room.
 
+### Demographics
 This file also examines the demographics of individuals living in overcrowded households. These characteristics include:
 * Household income
 * Sex
