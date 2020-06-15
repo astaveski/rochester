@@ -39,3 +39,7 @@ This file also examines the demographics of individuals living in overcrowded ho
 * Age
 * College enrollment
 * Citizenship status
+* Number of people
+
+## available.R
+Analyzes whether right-sized homes are available to individuals living in overcrowded households. This file primarily does two things: 1) estimates the additional space needed to eliminate overcrowding and 2) estimates the amount of space available on the open market. The analysis concludes that there is more than enough bedroom space on the open market to ensure all individuals can live in right-sized homes.
