@@ -2,7 +2,7 @@
 # * FILE: right_sized.R
 # * PURPOSE: Conduct right-sized analysis for the City of Rochester
 # * AUTHORS: Adam Staveski
-# * DATE: June 10, 2020
+# * DATE: June 15, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
@@ -36,7 +36,7 @@ rm("pums_hh", "pums_p")
 # Merge Datasets
 #-------------------------------------------------------------------------------
 # Merge household and person datasets
-roc=merge(roc_hh,roc_p, by="SERIALNO", suffixes = c(".hh", ".p"))
+roc=merge(roc_hh,roc_p, by="SERIALNO", all.x = TRUE, suffixes = c(".hh", ".p"))
 
 #-------------------------------------------------------------------------------
 # Generate Variables
@@ -126,6 +126,8 @@ roc %>%
 tapply(roc$PWGTP, list(roc$CIT_CAT), sum)                     # 89.7% of the population was a U.S. citizen at birth
 prop.table(tapply(roc$PWGTP, list(roc$CIT_CAT), sum))         # 4.1% are naturalized citizens
 
+
+
 #===============================================================================
 # Right-Sized Analysis
 #===============================================================================
@@ -180,14 +182,16 @@ with(room, Hmisc::wtd.quantile(DIFF2, prob = c(0.00, 0.01, 0.03, 0.04, 0.05), we
 with(room, Hmisc::wtd.quantile(DIFF1.5, prob = c(0.00, 0.01, 0.02, 0.03, 0.05), weights=PWGTP)) # 2% overcrowded & 0% severely overcrowded
 with(room, Hmisc::wtd.quantile(DIFF1, prob = c(0.00, 0.02, 0.03, 0.04, 0.05), weights=PWGTP))   # 4% overcrowded & 3% severely overcrowded
 
-#===============================================================================
-# Demographic Analysis -- Bedrooms
-#===============================================================================
+#-------------------------------------------------------------------------------
+# Identify people living in crowded households
+#-------------------------------------------------------------------------------
+#--------------------------------------
+# Bedroom Standard
+#--------------------------------------
 diff_bdrm <- paste0("DIFF", toString(bdrm))               # This changes dynamically with user specification
 
-# Flag people living in crowded households
 bed <- bed %>%
-  mutate(FLAG = ifelse(get(diff_bdrm) < 0, 1, 0))
+  mutate(FLAG = ifelse(get(diff_bdrm) < 0, 1, 0))         # FLAG identifies people living in overcrowded households
 
 tapply(bed$PWGTP, list(bed$FLAG), sum)                    # 9,165 people living in crowded households
 prop.table(tapply(bed$PWGTP, list(bed$FLAG), sum))        # 4.7% of the dataset
@@ -198,6 +202,27 @@ bed_crowd <- bed %>%
 bed_xcrowd <- bed %>%
   filter(get(diff_bdrm) >= 0)
 
+#--------------------------------------
+# Room Standard
+#--------------------------------------
+diff_rm <- paste0("DIFF", toString(rm))                    # This changes dynamically with user specification
+
+# Flag people living in crowded households
+room <- room %>%
+  mutate(FLAG = ifelse(get(diff_rm) < 0, 1, 0))
+
+tapply(room$PWGTP, list(room$FLAG), sum)                        # 3,977 people living in crowded households
+prop.table(tapply(room$PWGTP, list(room$FLAG), sum))            # 2.0% of the dataset
+
+# Split data into crowded and uncrowded persons
+room_crowd <- room %>%
+  filter(get(diff_rm) < 0)
+room_xcrowd <- room %>%
+  filter(get(diff_rm) >= 0)
+
+#===============================================================================
+# Demographic Analysis -- Bedrooms
+#===============================================================================
 #-------------------------------------------------------------------------------
 # Income Tabulations: [1=30% AMI, 2=50% AMI, 3=80% AMI, 4=120% AMI, 5=121+% AMI]
 #-------------------------------------------------------------------------------
@@ -236,15 +261,6 @@ prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RACE_CAT), sum))     # Black
                                                                          # Hisp  people make up 20.8% of uncrowded population
 
 #-------------------------------------------------------------------------------
-# Race Tabulations: [1=White,2=Black,6=Asian,9=Two or More Races]
-#-------------------------------------------------------------------------------
-tapply(bed_crowd$PWGTP, list(bed_crowd$RAC1P), sum)                   # White people make up 45.4% of crowded population
-prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$RAC1P), sum))       # Black people make up 44.0% of crowded population
-
-tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RAC1P), sum)                 # White people make up 47.4% of uncrowded population
-prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$RAC1P), sum))     # Black people make up 39.6% of uncrowded population
-
-#-------------------------------------------------------------------------------
 # Disability Tabulations: [1=Disability,2=No Disability]
 #-------------------------------------------------------------------------------
 tapply(bed_crowd$PWGTP, list(bed_crowd$DIS), sum)
@@ -280,26 +296,20 @@ prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$CIT_CAT), sum))       # Natura
 tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$CIT_CAT), sum)
 prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$CIT_CAT), sum))     # Naturalized and Non-Citizens make up 9.4% of uncrowded
 
+#-------------------------------------------------------------------------------
+# Number of People Tabulations: [# = Count]
+#-------------------------------------------------------------------------------
+tapply(bed_crowd$PWGTP, list(bed_crowd$NP), sum)
+prop.table(tapply(bed_crowd$PWGTP, list(bed_crowd$NP), sum))                     # 6-person households make up 23.1% of overcrowded
+
+tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$NP), sum, na.rm = TRUE)
+prop.table(tapply(bed_xcrowd$PWGTP, list(bed_xcrowd$NP), sum, na.rm = TRUE))     # 2-person households make up 25.1% of the uncrowded
+
 
 
 #===============================================================================
 # Demographic Analysis -- Rooms
 #===============================================================================
-diff_rm <- paste0("DIFF", toString(rm))                         # This changes dynamically with user specification
-
-# Flag people living in crowded households
-room <- room %>%
-  mutate(FLAG = ifelse(get(diff_rm) < 0, 1, 0))
-
-tapply(room$PWGTP, list(room$FLAG), sum)                        # 3,977 people living in crowded households
-prop.table(tapply(room$PWGTP, list(room$FLAG), sum))            # 2.0% of the dataset
-
-# Split data into crowded and uncrowded persons
-room_crowd <- room %>%
-  filter(get(diff_rm) < 0)
-room_xcrowd <- room %>%
-  filter(get(diff_rm) >= 0)
-
 #-------------------------------------------------------------------------------
 # Income Tabulations: [1=30% AMI, 2=50% AMI, 3=80% AMI, 4=120% AMI, 5=121+% AMI]
 #-------------------------------------------------------------------------------
@@ -372,3 +382,21 @@ prop.table(tapply(room_crowd$PWGTP, list(room_crowd$CIT_CAT), sum))       #
 
 tapply(room_xcrowd$PWGTP, list(room_xcrowd$CIT_CAT), sum)
 prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$CIT_CAT), sum))     # 
+
+#-------------------------------------------------------------------------------
+# Number of People Tabulations: [# = Count]
+#-------------------------------------------------------------------------------
+tapply(room_crowd$PWGTP, list(room_crowd$NP), sum)
+prop.table(tapply(room_crowd$PWGTP, list(room_crowd$NP), sum))                     # 6-person households make up 43.9% of overcrowded
+
+tapply(room_xcrowd$PWGTP, list(room_xcrowd$NP), sum, na.rm = TRUE)
+prop.table(tapply(room_xcrowd$PWGTP, list(room_xcrowd$NP), sum, na.rm = TRUE))     # 2-person households make up 24.6% of the uncrowded
+
+
+
+#===============================================================================
+# Export Dataframes to .CSV
+#===============================================================================
+#write.csv(roc, file = "./roc.csv")
+#write.csv(roc_hh, file = "./roc_hh.csv")
+#write.csv(roc_p, file = "./roc_p.csv")
