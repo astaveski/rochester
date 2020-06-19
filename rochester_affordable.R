@@ -237,8 +237,7 @@ all_roc$GRPIP_cat <- cut(all_roc$GRPIP, breaks = c(0, 30, 50, 60, 80, 100, 10000
 summary(all_roc$GRPIP_cat)
 prop.table(tapply(all_roc$WGTP_HH, list(all_roc$GRPIP_cat), sum))
 # Sanity check: the proportions are the same as when I used just the HH data,
-# which means the HH weights I created in the merged dataset are correct
-# (I created the correct weight variable in Stata. The variable is "WGTP_HH")
+# which means the HH weights I created in the merged dataset are correct (WGTP_HH)
 
 # Generate rent burdened category variables
 rent_bur_all <- all_roc %>% filter(GRPIP_cat %in% 2:5)  # >=30% income and <=100% income on rent
@@ -321,9 +320,6 @@ prop.table(tapply(rent_bur_single_m$PWGTP, list(rent_bur_single_m$age_cat), sum)
 all_roc$RACE = ifelse(all_roc$HISP == 01, all_roc$RAC1P, 10)
 prop.table(tapply(all_roc$PWGTP, list(all_roc$RACE), sum))
        # 36.6% White, 38.3% Black, 18.4% Hispanic
-
-# For now I'll look at the population. I need to figure out how to collapse at the
-# HH level after creating the RACE variable, to do the HH analysis (will be more accurate)
 
 # Race of renter household population
 rent_all$RACE = ifelse(rent_all$HISP == 01, rent_all$RAC1P, 10)
@@ -435,9 +431,7 @@ prop.table(tapply(single_bur_50to70_m$PWGTP, list(single_bur_50to70_m$MAR), sum)
 
 # ----------- Occupation of Female-Headed in Labor Force Family HHs ------------
 female_lf <- rent_all %>% filter(FES==7) # Rental HH families lead by single female in LF
-female_lf_bur <- rent_bur_all %>% filter(FES==7)
-
-# Occupation code:   
+female_lf_bur <- rent_bur_all %>% filter(FES==7)  
   
   
   
