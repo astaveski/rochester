@@ -46,9 +46,8 @@ This file also examines the demographics of individuals living in overcrowded ho
 ## available.R
 This file combines aspects of the affordability analysis and the right-sized analysis to estimate the so-called "right-sized affordable housing gap" in Rochester. This code does the following:
 * Imports and prepares 2018 household PUMS data
-* Analyzes Rochester's stock of vacant units
-* Conducts right-size analysis in the style of right_sized.R
-* Conducts affordability analysis in the style of affordable.R
-* Estimates the current right-sized affordable housing gap
+* Analyzes the characteristics of Rochester's stock of vacant units
+* Analyzes the space and cost needs of Rochester's renter households
+* Estimates the right-sized affordable housing gap under current conditions
 * Estimates the right-sized affordable housing gap under "perfect sorting" conditions
 
