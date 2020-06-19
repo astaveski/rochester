@@ -20,12 +20,13 @@ By Adam Staveski and Andrea Ringer
 ## right_sized.R
 Analyzes whether Rochester's housing stock is "right-sized" for the types of households living in the City. This code does the following:
 * Imports and prepares 2018 PUMS data in the style of pums_import.R
+* Conducts right-size analysis using person-level and household-level data
 * Conducts right-size analysis using two metrics:
    * Number of persons per bedroom (HUD threshold is a max of 2.0 persons per bedroom)
    * Number of persons per room (Typical standard is a max of 1.5 persons per room)
 
 ### Persons per Bedroom
-Although final determinations are made on a case-by-case basis, HUD typically defines a household as "overcrowded" if there are more than 2.0 people per livable bedroom. In accordance with this standard, I define a household as "overcrowded" if the number of people in the household divided by two is greater than the number of bedrooms in the household. I make an exception for one-person households, who I assume are comfortable living in studio/efficiency apartments. I also examine more spacious thresholds of 1.5 persons per bedroom and 1.0 persons per bedroom. 
+Although final determinations are made on a case-by-case basis, HUD typically defines "overcrowding" as having more than 2.0 people per livable bedroom. In accordance with this standard, I define a household as "overcrowded" if the number of people in the household divided by two is greater than the number of bedrooms in the household. I make an exception for one-person households, who I assume are comfortable living in zero bedroom studio/efficiency apartments. I also examine more spacious thresholds of 1.5 persons per bedroom and 1.0 persons per bedroom. 
 
 ### Persons per Room
 An alternative criteria to determine whether a household is overcrowded is to analyze the number of persons per room. In the UK, government guidelines suggest that a household is overcrowded if it has more than 1.5 people per room. In accordance with this standard, I define a household as "overcrowded" if the number of people in the household divided by 1.5 is greater than the number of rooms in the household. I also examine alternative thresholds of 1.0 persons per room and 2.0 persons per room.
@@ -40,6 +41,7 @@ This file also examines the demographics of individuals living in overcrowded ho
 * College enrollment
 * Citizenship status
 * Number of people
+* Homeownership status
 
 ## available.R
 Analyzes whether right-sized homes are available to individuals living in overcrowded households. This file primarily does two things: 1) estimates the additional space needed to eliminate overcrowding and 2) estimates the amount of space available on the open market. The analysis concludes that there is more than enough bedroom space on the open market to ensure all individuals can live in right-sized homes.
