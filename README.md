@@ -17,6 +17,7 @@ By Adam Staveski and Andrea Ringer
    * How to compute weighted standard errors
    * How to create histograms with weighted data
 
+
 ## right_sized.R
 Analyzes whether Rochester's housing stock is "right-sized" for the types of households living in the City. This code does the following:
 * Imports and prepares 2018 PUMS data in the style of pums_import.R
@@ -42,6 +43,7 @@ This file also examines the demographics of individuals living in overcrowded ho
 * Citizenship status
 * Number of people
 * Homeownership status
+
 
 ## available.R
 This file combines aspects of the affordability analysis and the right-sized analysis to estimate the so-called "right-sized affordable housing gap" in Rochester. This code does the following:
