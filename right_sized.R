@@ -1,6 +1,6 @@
 # ===============================================================================
 # * FILE: right_sized.R
-# * PURPOSE: Conduct right-sized analysis for the City of Rochester
+# * PURPOSE: Determine the extent of overcrowding in Rochester, NY
 # * AUTHORS: Adam Staveski
 # * DATE CREATED: June 10, 2020
 # * DATE LAST MODIFIED: June 15, 2020
