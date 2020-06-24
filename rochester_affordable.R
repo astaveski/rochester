@@ -3,13 +3,15 @@
 # * PURPOSE: Import and Analyze PUMS data from 2018
 # * AUTHORS: Adam Staveski, Andrea Ringer
 # * DATE CREATED: June 9, 2020
-# * DATE LAST MODIFIED: June 16, 2020
+# * DATE LAST MODIFIED: June 24, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
 library(survey)
+library(srvyr)
 library(Hmisc)
 library(cwhmisc)
+library(collapse)
 
 setwd("/Users/andrearinger/Documents/PUMS Data")
 
@@ -29,8 +31,8 @@ hh_monroe <- pums_hh
 # Clean Person and Household Data
 #-------------------------------------------------------------------------------
 # Separate year and ID number from SERIALNO
-p_roc$year=substr(as.character(p_roc$SERIALNO),1,4)
-p_roc$id=substr(as.character(p_roc$SERIALNO),5,25)
+all_roc$year=substr(as.character(p_roc$SERIALNO),1,4)
+all_roc$id=substr(as.character(p_roc$SERIALNO),5,25)
 
 hh_roc$year=substr(as.character(hh_roc$SERIALNO),1,4)
 hh_roc$id=substr(as.character(hh_roc$SERIALNO),5,25)
@@ -228,6 +230,27 @@ prop.table(tapply(rent_bur_30to50$WGTP, list(rent_bur_30to50$MV), sum))
       # moving from highly to severely rent burdened, the proportion of people who moved
       # in within the 12 mos or less increases significantly
 
+# Calculate average and standard error for length of time in rental unit
+time_in_unit <- select(hh_roc, MV, WGTP) %>% tally(wt=WGTP)
+weighted.mean(all_roc$MV, all_roc$WGTP_HH, na.rm==TRUE) # 3.56 (mean between 2-4 years)
+w.median(all_roc$MV, all_roc$WGTP_HH) # 3 (median between 2-4 years)
+
+# use "survey" package to set survey design and specify replicate weights
+pumsd_hh <- hh_roc %>%
+  as_survey_rep(
+    weights = WGTP, 
+    repweights = starts_with("WGTP"),
+    combined_weights = TRUE
+  )
+
+# calculate mean and std. error of "length of time" variable
+pumsd_hh %>%
+  filter(!is.na(MV)) %>%
+  summarise(
+    survey_mean(MV, na.rm = TRUE)
+  )
+      # mean=3.56, se=0.0131
+      # mean same as with previous method, so this is correct
 
 #-------------------------------------------------------------------------------
 # Characteristics of those who are rent burdened - merged data
@@ -237,7 +260,14 @@ all_roc$GRPIP_cat <- cut(all_roc$GRPIP, breaks = c(0, 30, 50, 60, 80, 100, 10000
 summary(all_roc$GRPIP_cat)
 prop.table(tapply(all_roc$WGTP_HH, list(all_roc$GRPIP_cat), sum))
 # Sanity check: the proportions are the same as when I used just the HH data,
-# which means the HH weights I created in the merged dataset are correct (WGTP_HH)
+# which means the HH weights I created in the merged dataset are correct
+# (I created the correct weight variable in Stata. The variable is "WGTP_HH")
+
+# Generate categories for age in merged data
+all_roc$age_cat <- cut(all_roc$AGEP, breaks = c(0, 20, 30, 50, 70, 10000000), labels = c(1,2,3,4,5), right = TRUE)
+
+# Generate categories for race in merged data
+all_roc$RACE = ifelse(all_roc$HISP == 01, all_roc$RAC1P, 10)
 
 # Generate rent burdened category variables
 rent_bur_all <- all_roc %>% filter(GRPIP_cat %in% 2:5)  # >=30% income and <=100% income on rent
@@ -266,14 +296,6 @@ weighted.mean(hh_single_m$AGEP, hh_single_m$PWGTP)   # male: 47.6 years old
 weighted.mean(rent_bur_single$AGEP, rent_bur_single$PWGTP)   # all: 51.1 years old
 weighted.mean(rent_bur_single_f$AGEP, rent_bur_single_f$PWGTP)   # female: 51.9 years old
 weighted.mean(rent_bur_single_m$AGEP, rent_bur_single_m$PWGTP)   # male: 50.3 years old
-
-# Create age categories
-hh_single$age_cat <- cut(hh_single$AGEP, breaks = c(0, 20, 30, 50, 70, 10000000), labels = c(1,2,3,4,5), right = TRUE)
-hh_single_f$age_cat <- cut(hh_single_f$AGEP, breaks = c(0, 20, 30, 50, 70, 10000000), labels = c(1,2,3,4,5), right = TRUE)
-hh_single_m$age_cat <- cut(hh_single_m$AGEP, breaks = c(0, 20, 30, 50, 70, 10000000), labels = c(1,2,3,4,5), right = TRUE)
-rent_bur_single$age_cat <- cut(rent_bur_single$AGEP, breaks = c(0, 20, 30, 50, 70, 10000000), labels = c(1,2,3,4,5), right = TRUE)
-rent_bur_single_f$age_cat <- cut(rent_bur_single_f$AGEP, breaks = c(0, 20, 30, 50, 70, 10000000), labels = c(1,2,3,4,5), right = TRUE)
-rent_bur_single_m$age_cat <- cut(rent_bur_single_m$AGEP, breaks = c(0, 20, 30, 50, 70, 10000000), labels = c(1,2,3,4,5), right = TRUE)
 
 # Single renter HHs: all, female, male
 prop.table(tapply(hh_single$PWGTP, list(hh_single$age_cat), sum))
@@ -310,50 +332,66 @@ prop.table(tapply(rent_bur_single_m$PWGTP, list(rent_bur_single_m$age_cat), sum)
       # Age 50-70: 43.5%
       # Age 70+:   8.2%
 
+# Calculate mean and std. error of age overall and by category
+# use "survey" package to set survey design and specify replicate weights
+pumsd_all <- all_roc %>%
+  as_survey_rep(
+    weights = PWGTP, 
+    repweights = starts_with("PWGTP"),
+    combined_weights = TRUE
+  )
+
+# calculate mean and std. error of age
+pumsd_all %>%
+  filter(!is.na(AGEP)) %>%
+  summarise(
+    survey_mean(AGEP, na.rm = TRUE)
+  )
+# mean=, se=
+# error message: Error in qr.default(weights(design, "analysis"), tol = 1e-05) : 
+# NA/NaN/Inf in foreign function call (arg 1)
+
+
 # ---------------------------------- RACE --------------------------------------
 # Create RACE
 # 1 = White alone; 2 = Black alone; 3 = American Indian alone; 4 = Alaska Native alone
 # 5 = American Indian & Alaskan Native; 6 = Asian alone; 7 = Native Hawaiian / Pacific Islander alone
 # 8 = Some other race alone; 9 = Two or more races; 10 = Hispanic
+# (Categories for race generated in previous section in merged data)
 
 # Race proportions in Rochester population
-all_roc$RACE = ifelse(all_roc$HISP == 01, all_roc$RAC1P, 10)
 prop.table(tapply(all_roc$PWGTP, list(all_roc$RACE), sum))
        # 36.6% White, 38.3% Black, 18.4% Hispanic
 
+# For now I'll look at the population. I need to figure out how to collapse at the
+# HH level after creating the RACE variable, to do the HH analysis (will be more accurate)
+
 # Race of renter household population
-rent_all$RACE = ifelse(rent_all$HISP == 01, rent_all$RAC1P, 10)
 tapply(rent_all$PWGTP, list(rent_all$RACE), sum)
 prop.table(tapply(rent_all$PWGTP, list(rent_all$RACE), sum))
-       # 22.6% White, 49.1% Black, 22.2% Hispanic
+       # 28.8% White, 44.5% Black, 20.5% Hispanic
 
 # Race of rent burdened population
-rent_bur_all$RACE = ifelse(rent_bur_all$HISP == 01, rent_bur_all$RAC1P, 10)
 prop.table(tapply(rent_bur_all$PWGTP, list(rent_bur_all$RACE), sum))
        # 22.6% White, 49.1% Black, 22.2% Hispanic
 
 # Race of slightly rent burdened population
-rent_bur_slight$RACE = ifelse(rent_bur_slight$HISP == 01, rent_bur_slight$RAC1P, 10)
 prop.table(tapply(rent_bur_slight$PWGTP, list(rent_bur_slight$RACE), sum))
       # 24.7% White, 49.5% Black, 20.3% Hispanic
 
 # Race of highly rent burdened population
-rent_bur_high$RACE = ifelse(rent_bur_high$HISP == 01, rent_bur_high$RAC1P, 10)
 prop.table(tapply(rent_bur_high$PWGTP, list(rent_bur_high$RACE), sum))
       # 19.9% White, 48.5% Black, 24.6% Hispanic
  
 # Race of severely rent burdened population
-rent_bur_severe$RACE = ifelse(rent_bur_severe$HISP == 01, rent_bur_severe$RAC1P, 10)
 prop.table(tapply(rent_bur_severe$PWGTP, list(rent_bur_severe$RACE), sum))
       # 16.8% White, 50.0% Black, 27.7% Hispanic
 
 # Race of single renter HHs (see section HHT above)
-hh_single$RACE = ifelse(hh_single$HISP == 01, hh_single$RAC1P, 10)
 prop.table(tapply(hh_single$PWGTP, list(hh_single$RACE), sum))
       # 48.1% White, 35.1% Black, 12.3% Hispanic
 
 # Race of rent-burdened single renter HHs
-rent_bur_single$RACE = ifelse(rent_bur_single$HISP == 01, rent_bur_single$RAC1P, 10)
 prop.table(tapply(rent_bur_single$PWGTP, list(rent_bur_single$RACE), sum))
       # 44.6% White, 39.0% Black, 13.5% Hispanic
 
@@ -429,12 +467,88 @@ tapply(single_bur_50to70_m$PWGTP, list(single_bur_50to70_m$MAR), sum)
 prop.table(tapply(single_bur_50to70_m$PWGTP, list(single_bur_50to70_m$MAR), sum))
     # Widowed: 7.4%, Divorced: 30.0%, Separated: 11.3%, Never married: 50.7%
 
+
 # ----------- Occupation of Female-Headed in Labor Force Family HHs ------------
 female_lf <- rent_all %>% filter(FES==7) # Rental HH families lead by single female in LF
-female_lf_bur <- rent_bur_all %>% filter(FES==7)  
-  
-  
-  
+
+# Restrict data to HH head only
+# Try function from "collapse" package
+hh_female_lf_2 <- collap(female_lf, ~ SERIALNO, ffirst) # keep only first obs of SERIALNO
+hh_test <- collap(all_roc, ~ SERIALNO, ffirst) # Test collapse with "all_roc" to see if I get # of obs in "hh_roc" data
+    # Not sure that this works correctly
+
+# Use SPORDER to collapse data and create one obs. per HH
+female_lf <- arrange(female_lf, SERIALNO, SPORDER)
+hh_female_lf <- female_lf %>% filter(SPORDER==1)
+
+# Occupation code: INDP, NAICSP
+tapply(hh_female_lf$PWGTP, list(hh_female_lf$INDP), sum)
+prop.table(tapply(hh_female_lf$PWGTP, list(hh_female_lf$INDP), sum))
+
+# Create occupation categories (based on INDP codes, see data dictionary)
+hh_female_lf$ind_cat <- cut(hh_female_lf$INDP, breaks = c(0, 300, 500, 700, 1000, 4000, 4600, 6000, 6400, 6800, 7200, 7800, 7900, 8300, 8500, 8700, 9300, 9600, 9900, 10000000), 
+                            labels = c("AGR", "EXT", "UTL", "CON", "MFG", "WHL", "RET", "TRN", "INF", "FIN", "PRF", "EDU", "MED", "SCA", "ENT", "SRV", "ADM", "MIL", "UEM"), right = TRUE)
+
+# Create subsets of female single-headed HHs based on rent burden
+hh_female_lf_bur <- hh_female_lf %>% filter(GRPIP_cat %in% 2:5)
+hh_female_lf_bur_slight <- hh_female_lf %>% filter(GRPIP_cat==2)
+hh_female_lf_bur_high <- hh_female_lf %>% filter(GRPIP_cat %in% 3:5)
+hh_female_lf_bur_severe <- hh_female_lf %>% filter(GRPIP_cat==6)
+
+# All single-female-headed-HHs in LF occupation categories
+tapply(hh_female_lf$PWGTP, list(hh_female_lf$ind_cat), sum)
+
+# Rent-burdened single-female-headed-HHs in LF occupation categories
+tapply(hh_female_lf_bur$PWGTP, list(hh_female_lf_bur$ind_cat), sum)
+
+# Slightly rent-burdened single-female-headed-HHs in LF occupation categories
+tapply(hh_female_lf_bur_slight$PWGTP, list(hh_female_lf_bur_slight$ind_cat), sum)
+
+# Highly rent-burdened single-female-headed-HHs in LF occupation categories
+tapply(hh_female_lf_bur_high$PWGTP, list(hh_female_lf_bur_high$ind_cat), sum)
+
+# Severely rent-burdened single-female-headed-HHs in LF occupation categories
+tapply(hh_female_lf_bur_severe$PWGTP, list(hh_female_lf_bur_severe$ind_cat), sum)
+
+
+#-----------------Rent Burden of Different Occupations -------------------------
+# Create occupation categories (based on INDP codes, see data dictionary)
+all_roc$ind_cat <- cut(all_roc$INDP, breaks = c(0, 300, 500, 700, 1000, 4000, 4600, 6000, 6400, 6800, 7200, 7800, 7900, 8300, 8500, 8700, 9300, 9600, 9900, 10000000), 
+labels = c("AGR", "EXT", "UTL", "CON", "MFG", "WHL", "RET", "TRN", "INF", "FIN", "PRF", "EDU", "MED", "SCA", "ENT", "SRV", "ADM", "MIL", "UEM"), right = TRUE)
+
+# Manufacturing
+mfg <- all_roc %>% filter(ind_cat=="MFG")
+tapply(mfg$PWGTP, list(mfg$GRPIP_cat), sum)
+prop.table(tapply(mfg$PWGTP, list(mfg$GRPIP_cat), sum)) # 36.8% are rent burdened
+
+# Retail
+ret <- all_roc %>% filter(ind_cat=="RET")
+tapply(ret$PWGTP, list(ret$GRPIP_cat), sum)
+prop.table(tapply(ret$PWGTP, list(ret$GRPIP_cat), sum)) # 51.7% are rent burdened
+
+# Professional
+prf <- all_roc %>% filter(ind_cat=="PRF")
+tapply(prf$PWGTP, list(prf$GRPIP_cat), sum)
+prop.table(tapply(prf$PWGTP, list(prf$GRPIP_cat), sum)) # 47.2% are rent burdened
+
+# Medical
+med <- all_roc %>% filter(ind_cat=="MED")
+tapply(med$PWGTP, list(med$GRPIP_cat), sum)
+prop.table(tapply(med$PWGTP, list(med$GRPIP_cat), sum)) # 40.5% are rent burdened
+
+# Social services and care
+sca <- all_roc %>% filter(ind_cat=="SCA")
+tapply(sca$PWGTP, list(sca$GRPIP_cat), sum)
+prop.table(tapply(sca$PWGTP, list(sca$GRPIP_cat), sum)) # 47.1% are rent burdened
+
+# Standard Error Example
+own <- filter(hh_roc, VACS==1)
+pt.est <- sum(own$WGTP)
+rep.names <- paste0('WGTP', 1:80)
+rep.ests <- sapply(rep.names, function(n) sum(own[[n]]))
+sqrt((4/80) * sum((rep.ests - pt.est)^2))
+
+
 #-------------------------------------------------------------------------------
 # OCPIP and HINCP: Gross owner costs as % of HH income; HH income
 #-------------------------------------------------------------------------------
@@ -562,3 +676,4 @@ prop.table(tapply(hh_roc$WGTP, list(hh_roc$aff_inc_cat_roc), sum))
      # 27.2% of units exclusively fall within >=120% AMI affordability
 # The category percentages are different when I use Rochester AMI because absolute
 # rent prices are included in the calculation, which aren't based on AMI
+
