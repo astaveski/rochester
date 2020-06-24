@@ -17,6 +17,7 @@ By Adam Staveski and Andrea Ringer
    * How to compute weighted standard errors
    * How to create histograms with weighted data
 
+
 ## right_sized.R
 Analyzes whether Rochester's housing stock is "right-sized" for the types of households living in the City. This code does the following:
 * Imports and prepares 2018 PUMS data in the style of pums_import.R
@@ -43,6 +44,7 @@ This file also examines the demographics of individuals living in overcrowded ho
 * Number of people
 * Homeownership status
 
+
 ## available.R
 This file combines aspects of the affordability analysis and the right-sized analysis to estimate the so-called "right-sized affordable housing gap" in Rochester. This code does the following:
 * Imports and prepares 2018 PUMS household data
@@ -51,3 +53,11 @@ This file combines aspects of the affordability analysis and the right-sized ana
 * Estimates the right-sized affordable housing gap under current conditions
 * Estimates the right-sized affordable housing gap under "perfect sorting" conditions
 
+### Determining Right-Sized Affordable Housing
+This analysis defines a unit as "affordable" if a household can spend 30% or less of its annual income on rent and utilities. This analysis defines a unit as "right-sized" if there are two people or less per bedroom, on average. Any unit that is not right-sized and/or affordable is counted toward the right-sized affordable housing gap.
+
+### Estimating the Current Gap
+Using 2018 PUMS household data, this file flags all households that are currently 1) unaffordable, according to the 30% of household income standard or 2) overcrowded, according to the 2.0 people per bedroom standard. The file then counts all households with at least one of the two flags. By this measure, 28,351 households are not right-sized and/or affordable.
+
+### Estimating the Gap Under Perfect Sorting Conditions
+Although 28,351 households are either unaffordable or overcrowded, part of this gap can be alleviated through perfect allocation of households to housing units. Under these "perfect sorting" conditions, the lowest-priced unit is allocated to the lowest-income family that can afford it while also avoiding overcrowding. This hypothetical scenario results in a right-sized affordable housing gap of 12,907 units, which indicates that over half of the gap can be filled through a more efficient allocation of households to housing units.
