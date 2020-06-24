@@ -1,9 +1,10 @@
 # ===============================================================================
-# * FILE: available.R
-# * PURPOSE: Estimate the right-sized affordable housing gap
+# * FILE: gap_analysis.R
+# * PURPOSE: Estimate the right-sized affordable housing gap under current 
+# *          conditions and "perfect sorting" conditions.
 # * AUTHORS: Adam Staveski
 # * DATE CREATED: June 12, 2020
-# * DATE LAST MODIFIED: June 19, 2020
+# * DATE LAST MODIFIED: June 24, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
@@ -14,9 +15,11 @@ library(ggplot2)
 
 setwd("/Users/astav/Documents/Employment/Harvard-Bloomberg/Rochester/R/Data/PUMS")
 
-# Select standards for overcrowding
-bdrm  <- 2          # Options are: 2 / 1.5 / 1 bedrooms per person
-rm    <- 1.5        # Options are: 2 / 1.5 / 1 rooms per person
+# Select standard for overcrowding
+bdrm  <- 2            # Options: 2 / 1.5 / 1 bedrooms per person
+
+# Select standard for affordability
+max_rent <- 30        # Options: Any numeric value || Format: 30 --> 30% of household income
 
 #===============================================================================
 # Data Import and Preparation
@@ -230,10 +233,12 @@ mon_median_inc <- w.median(monroe_hh$HINCP, monroe_hh$WGTP)         # Median inc
 #--------------------------------------
 # Compute Minimum Income Cutoffs (% AMI)
 #--------------------------------------
+max_rent <- max_rent/100
+
 rentals <- rentals %>%
-  mutate(MIN_AMI = (AGRNTP / 0.3 / ami)*100) %>%
-  mutate(MIN_AMI_ROC = (AGRNTP / 0.3 / roc_median_inc)*100) %>%     # Assuming no more than 30% of income should be spent on housing,
-  mutate(MIN_AMI_MON = (AGRNTP / 0.3 / mon_median_inc)*100)         # what is the minimum income required to rent a given unit?
+  mutate(MIN_AMI = (AGRNTP / max_rent / ami)*100) %>%
+  mutate(MIN_AMI_ROC = (AGRNTP / max_rent / roc_median_inc)*100) %>%     # Assuming no more than 30% of income should be spent on housing,
+  mutate(MIN_AMI_MON = (AGRNTP / max_rent / mon_median_inc)*100)         # what is the minimum income required to rent a given unit?
 
 #--------------------------------------
 # Group Income Cutoffs Into Buckets
@@ -395,66 +400,38 @@ sort_unit <- data.frame(AGRNTP = AGRNTP_expand, BDSP = BDSP_expand)
 # Initialize Loop Variables
 #--------------------------------------
 sort_hh <- sort_hh %>%
-  mutate(MAX_RENT = HINCP*0.3, RENTED = 0, INDEX = 0)
+  mutate(MAX_RENT = HINCP*max_rent, RENTED = 0, INDEX = 0)
 
 sort_unit <- sort_unit %>%
   mutate(OCCUPIED = 0, INDEX = 0)
 
-temp <- 1
-
-#--------------------------------------
-# Filter Datasets
-#--------------------------------------
-#sort_hh <- sort_hh %>%
-#  filter(BEDR2 == 5 | BEDR2 == 6)
-
-#sort_unit <- sort_unit %>%
-#  filter(BDSP == 5 | BDSP == 6)
-
 #-------------------------------------------------------------------------------
-# Sorting Loop #1 -- Matching by Affordability and Size
+# Sorting Loop -- Takes About 75 Seconds to Run
 #-------------------------------------------------------------------------------
-# Match lowest-cost units to lowest income households if they can afford it
-# WARNING: This loop takes ~20 minutes to run
 for (row in 1:nrow(sort_unit)) {
-  while (sort_unit[row, "AGRNTP"] > sort_hh[temp, "MAX_RENT"] | sort_hh[temp, "RENTED"] == 1) {
-    temp <- temp + 1
-  }
-  
-  if (temp %% 1000 == 0) {
-    print(temp)
-  }
+  #--------------------------------------
+  # Determine Unit Cost and Size Criteria
+  #--------------------------------------
+  rent <- sort_unit[row,"AGRNTP"]
+  beds <- sort_unit[row,"BDSP"]
   
   #--------------------------------------
-  # When there is enough space
+  # Match Unit to Minimum HH That Meets Criteria
   #--------------------------------------
-  if (sort_unit[row, "BDSP"] >= sort_hh[temp, bed_need]) {
-    sort_unit[row, "INDEX"] <- temp
-    sort_hh[temp, "INDEX"] <- row
-    sort_hh[temp, "RENTED"] <- sort_hh[temp, "RENTED"] + 1
-    sort_unit[row, "OCCUPIED"] <- sort_unit[row, "OCCUPIED"] + 1
-    temp <- temp + 1
-  }
+  index <- which(sort_hh$MAX_RENT >= rent & sort_hh$RENTED == 0 & sort_hh[,bed_need] <= beds)[1]
+  index <- ifelse(is.na(index),0,index)
   
   #--------------------------------------
-  # When there is not enough space
+  # Update Dataframes to Reflect the Match
   #--------------------------------------
-  else if (sort_unit[row, "BDSP"] < sort_hh[temp, bed_need]) {
-      temp2 <- temp + 1
-      while (sort_unit[row, "BDSP"] < sort_hh[temp2, bed_need] | sort_hh[temp2, "RENTED"] == 1) {
-        temp2 <- temp2 + 1
-      }
-      
-      if (sort_unit[row, "AGRNTP"] < sort_hh[temp2, "MAX_RENT"]) {
-        sort_unit[row, "INDEX"] <- temp2
-        sort_hh[temp2, "INDEX"] <- row
-        sort_hh[temp2, "RENTED"] <- sort_hh[temp2, "RENTED"] + 1
-        sort_unit[row, "OCCUPIED"] <- sort_unit[row, "OCCUPIED"] + 1
-      }
-  }
+  sort_hh[index,"INDEX"] <- row
+  sort_hh[index,"RENTED"] <- sort_hh[index,"RENTED"] + 1
+  
+  sort_unit[row,"INDEX"] <- index
+  sort_unit[row,"OCCUPIED"] <- ifelse(sort_unit[row,"INDEX"] == 0, 0, 1)
   
   #--------------------------------------
-  # When all units are rented
+  # Break at Wealthiest Renter
   #--------------------------------------
   if (sort_hh[nrow(sort_hh), "RENTED"] == 1) {
     break()
@@ -464,15 +441,15 @@ for (row in 1:nrow(sort_unit)) {
 #-------------------------------------------------------------------------------
 # Results Analysis
 #-------------------------------------------------------------------------------
-#--------------------------------------
-# Overall
-#--------------------------------------
 sort_hh$one <- 1
 sort_unit$one <- 1
 
+#--------------------------------------
+# Overall
+#--------------------------------------
 sort_hh %>%
-  summarise(renters = sum(one), xGAP = sum(RENTED), GAP = sum(one)-sum(RENTED), GAP_pct = 1-(sum(RENTED)/sum(one)),
-            pxGAP = sum(RENTED*NP), pGAP = sum(one*NP)-sum(RENTED*NP), pGAP_pct = 1-(sum(RENTED*NP)/sum(one*NP)))
+  summarise(rentals = sum(one), xGAP = sum(RENTED), GAP = sum(one)-sum(RENTED), GAP_pct = 1-(sum(RENTED)/sum(one)),
+            renters = sum(one*NP), pxGAP = sum(RENTED*NP), pGAP = sum(one*NP)-sum(RENTED*NP), pGAP_pct = 1-(sum(RENTED*NP)/sum(one*NP)))
 
 sort_unit %>%
   summarise(rentals = sum(one), xGAP = sum(OCCUPIED), GAP = sum(one)-sum(OCCUPIED), GAP_pct = 1-(sum(OCCUPIED)/sum(one)))
@@ -481,7 +458,7 @@ sort_unit %>%
 # 0-1 Bedroom
 #--------------------------------------
 sort_hh %>%
-  filter(BEDR2 == 0 | BEDR2 == 1) %>%
+  filter(get(bed_need) == 0 | get(bed_need) == 1) %>%
   summarise(rentals = sum(one), xGAP = sum(RENTED), GAP = sum(one)-sum(RENTED), GAP_pct = 1-(sum(RENTED)/sum(one)),
             renters = sum(one*NP), pxGAP = sum(RENTED*NP), pGAP = sum(one*NP)-sum(RENTED*NP), pGAP_pct = 1-(sum(RENTED*NP)/sum(one*NP)))
 
@@ -493,7 +470,7 @@ sort_unit %>%
 # 2 Bedroom
 #--------------------------------------
 sort_hh %>%
-  filter(BEDR2 == 2) %>%
+  filter(get(bed_need) == 2) %>%
   summarise(rentals = sum(one), xGAP = sum(RENTED), GAP = sum(one)-sum(RENTED), GAP_pct = 1-(sum(RENTED)/sum(one)),
             renters = sum(one*NP), pxGAP = sum(RENTED*NP), pGAP = sum(one*NP)-sum(RENTED*NP), pGAP_pct = 1-(sum(RENTED*NP)/sum(one*NP)))
 
@@ -505,7 +482,7 @@ sort_unit %>%
 # 3 Bedroom
 #--------------------------------------
 sort_hh %>%
-  filter(BEDR2 == 3) %>%
+  filter(get(bed_need) == 3) %>%
   summarise(rentals = sum(one), xGAP = sum(RENTED), GAP = sum(one)-sum(RENTED), GAP_pct = 1-(sum(RENTED)/sum(one)),
             renters = sum(one*NP), pxGAP = sum(RENTED*NP), pGAP = sum(one*NP)-sum(RENTED*NP), pGAP_pct = 1-(sum(RENTED*NP)/sum(one*NP)))
 
@@ -517,7 +494,7 @@ sort_unit %>%
 # 4 Bedroom
 #--------------------------------------
 sort_hh %>%
-  filter(BEDR2 == 4) %>%
+  filter(get(bed_need) == 4) %>%
   summarise(rentals = sum(one), xGAP = sum(RENTED), GAP = sum(one)-sum(RENTED), GAP_pct = 1-(sum(RENTED)/sum(one)),
             renters = sum(one*NP), pxGAP = sum(RENTED*NP), pGAP = sum(one*NP)-sum(RENTED*NP), pGAP_pct = 1-(sum(RENTED*NP)/sum(one*NP)))
 
@@ -529,7 +506,7 @@ sort_unit %>%
 # 5+ Bedroom
 #--------------------------------------
 sort_hh %>%
-  filter(BEDR2 == 5 | BEDR2 == 6) %>%
+  filter(get(bed_need) == 5 | get(bed_need) == 6) %>%
   summarise(rentals = sum(one), xGAP = sum(RENTED), GAP = sum(one)-sum(RENTED), GAP_pct = 1-(sum(RENTED)/sum(one)),
             renters = sum(one*NP), pxGAP = sum(RENTED*NP), pGAP = sum(one*NP)-sum(RENTED*NP), pGAP_pct = 1-(sum(RENTED*NP)/sum(one*NP)))
 
@@ -550,72 +527,5 @@ rentals %>%
   filter(HINCP <= 26100) %>%                      # In the entire rental universe, 26,025 households make <$26,100
   summarise(num = sum(WGTP))                      # Of these households, 12,907 (49.6%) are in the gap
 
-
-
-#-------------------------------------------------------------------------------
-# Sorting Loop #2 -- Matching By Rank Order
-#-------------------------------------------------------------------------------
-#--------------------------------------
-# Recreate Dataframes
-#--------------------------------------
-bed_need <- paste0("BEDR", toString(bdrm))
-
-sort_hh <- rentals %>%
-  select(SERIALNO, WGTP, HINCP, NP, bed_need)
-
-sort_unit <- rentals %>%
-  select(SERIALNO, WGTP, GRNTP, AGRNTP, BDSP)
-
-sort_hh <- sort_hh[order(sort_hh$HINCP, sort_hh$NP),]
-sort_unit <- sort_unit[order(sort_unit$AGRNTP, sort_unit$BDSP),]
-
-HINCP_expand <- rep(sort_hh$HINCP, sort_hh$WGTP)
-NP_expand    <- rep(sort_hh$NP, sort_hh$WGTP)
-BEDR2_expand <- rep(sort_hh$BEDR2, sort_hh$WGTP)
-
-AGRNTP_expand <- rep(sort_unit$AGRNTP, sort_unit$WGTP)
-BDSP_expand <- rep(sort_unit$BDSP, sort_unit$WGTP)
-
-sort_hh <- data.frame(HINCP = HINCP_expand, NP = NP_expand, BEDR2 = BEDR2_expand)
-sort_unit <- data.frame(AGRNTP = AGRNTP_expand, BDSP = BDSP_expand)
-
-sort_hh <- sort_hh %>%
-  mutate(MAX_RENT = HINCP*0.3, RENTED = 0, INDEX = 0)
-
-sort_unit <- sort_unit %>%
-  mutate(OCCUPIED = 0, INDEX = 0)
-
-#--------------------------------------
-# Filter by Bedroom Need/Size
-#--------------------------------------
-sort_hh <- sort_hh %>%
-  filter(BEDR2 == 0 | BEDR2 == 1)
-
-sort_unit <- sort_unit %>%
-  filter(BDSP == 0 | BDSP == 1)
-
-#--------------------------------------
-# Run Loop
-#--------------------------------------
-for (row in 1:nrow(sort_unit)) {
-  if (sort_unit[row, "AGRNTP"] <= sort_hh[row, "MAX_RENT"]) {
-    sort_unit[row, "OCCUPIED"] <- 1
-    sort_hh[row, "RENTED"] <- 1
-  }
-}
-
-#--------------------------------------
-# Analyze Results
-#--------------------------------------
-sort_hh$one <- 1
-sort_unit$one <- 1
-
-# Nonsensical result: 32,631 households are in the gap
-sort_hh %>%
-  summarise(renters = sum(one), xGAP = sum(RENTED), GAP = sum(one)-sum(RENTED), GAP_pct = 1-(sum(RENTED)/sum(one)),
-            pxGAP = sum(RENTED*NP), pGAP = sum(one*NP)-sum(RENTED*NP), pGAP_pct = 1-(sum(RENTED*NP)/sum(one*NP)))
-
-sort_unit %>%
-  summarise(rentals = sum(one), xGAP = sum(OCCUPIED), GAP = sum(one)-sum(OCCUPIED), GAP_pct = 1-(sum(OCCUPIED)/sum(one)))
 
 #write.csv(sort_hh, file = "./sort_hh.csv")
