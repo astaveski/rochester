@@ -2,7 +2,8 @@
 # * FILE: pums_import.R
 # * PURPOSE: Import PUMS data from 2018
 # * AUTHORS: Adam Staveski
-# * DATE: June 10, 2020
+# * DATE CREATED: June 4, 2020
+# * DATE LAST MODIFIED: June 15, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
@@ -10,13 +11,15 @@ library(survey)
 library(Hmisc)
 library(ggplot2)
 
+options(scipen=999)
+
 setwd("/Users/astav/Documents/Employment/Harvard-Bloomberg/Rochester/R/Data/PUMS")
 
 #-------------------------------------------------------------------------------
 # Load PUMS Household Data and Select Rochester PUMAs
 #-------------------------------------------------------------------------------
 pums_hh <- read_csv("psam_h36.csv", guess_max = 12000)
-pums_p <- read_csv("psam_p36.csv", guess_max = 12000)
+pums_p  <- read_csv("psam_p36.csv", guess_max = 12000)
 
 hh_roc <- pums_hh %>%
   filter(PUMA == "00902" | PUMA == "00903")
@@ -29,7 +32,7 @@ rm("pums_hh", "pums_p")
 # Merge Datasets
 #-------------------------------------------------------------------------------
 # Merge household and person datasets
-roc=merge(hh_roc,p_roc, by="SERIALNO", suffixes = c(".hh", ".p"))
+roc=merge(roc_hh,roc_p, by="SERIALNO", all.x = TRUE, suffixes = c(".hh", ".p"))
 
 # Split datasets into individual households
 #hh=split(roc,roc$SERIALNO)
