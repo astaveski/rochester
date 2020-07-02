@@ -4,7 +4,7 @@
 # *          conditions and "perfect sorting" conditions.
 # * AUTHORS: Adam Staveski
 # * DATE CREATED: June 12, 2020
-# * DATE LAST MODIFIED: June 24, 2020
+# * DATE LAST MODIFIED: July 2, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
@@ -13,37 +13,53 @@ library(Hmisc)
 library(cwhmisc)
 library(ggplot2)
 
-setwd("/Users/astav/Documents/Employment/Harvard-Bloomberg/Rochester/R/Data/PUMS")
+#--------------------------------------
+# Select Dataset
+#--------------------------------------
+pums <- 5             # Which PUMS dataset should be used?
+                      # Options: 1 / 5 --> 1-year PUMS / 5-year PUMS
 
-# Select standard for overcrowding
-bdrm  <- 2            # Options: 2 / 1.5 / 1 bedrooms per person
+#--------------------------------------
+# Select Standard for Overcrowding
+#--------------------------------------
+bdrm  <- 2            # How many people per bedroom is "overcrowded"?
+                      # Options: 2 / 1.75 / 1.5 people per bedroom
 
-# Select standard for affordability
-max_rent <- 30        # Options: Any numeric value || Format: 30 --> 30% of household income
+#--------------------------------------
+# Select Standard for Affordability
+#--------------------------------------
+inc_pct <- 30         # What percent of household income is "affordable"? 
+                      # Format: 30 --> 30% of household income
+
+#--------------------------------------
+# Select AMI Standard
+#--------------------------------------
+ami <- 74000          # What number should be used as "Area Median Income"?
+                      # Format: 74000 --> $74,000
+
+
 
 #===============================================================================
 # Data Import and Preparation
 #===============================================================================
-#-------------------------------------------------------------------------------
-# Load PUMS Household Data and Select Rochester PUMAs
-#-------------------------------------------------------------------------------
-pums_hh <- read_csv("psam_h36.csv", guess_max = 12000)
-pums_p <- read_csv("psam_p36.csv", guess_max = 12000)
+#--------------------------------------
+# Set Working Directory
+#--------------------------------------
+wd <- paste0("/Users/astav/Documents/Employment/Harvard-Bloomberg/Rochester/R/PUMS_",pums,"_Year/Data/")
+setwd(wd)
+rm(wd)
 
-roc_hh <- pums_hh %>%
-  filter(PUMA == "00902" | PUMA == "00903")
-roc_p <- pums_p %>%
-  filter(PUMA == "00902" | PUMA == "00903")
-monroe_hh <- pums_hh %>%
-  filter(PUMA=="00901" | PUMA=="00902" | PUMA=="00903" | PUMA=="00904" | PUMA=="00905" | PUMA=="00906")
+#--------------------------------------
+# Create Objects
+#--------------------------------------
+prep.names <- paste0('PWGTP', 1:80)
+wrep.names <- paste0('WGTP', 1:80)
 
-rm("pums_hh", "pums_p")
-
-#-------------------------------------------------------------------------------
-# Merge Datasets
-#-------------------------------------------------------------------------------
-# Merge household and person datasets
-# roc=merge(roc_hh,roc_p, by="SERIALNO", all.x = TRUE, suffixes = c(".hh", ".p"))
+#--------------------------------------
+# Load Rochester PUMS Data
+#--------------------------------------
+load("./roc_hh.Rda")
+load("./roc_p.Rda")
 
 
 
@@ -54,58 +70,60 @@ rm("pums_hh", "pums_p")
 # Types of Vacant Units
 #--------------------------------------
 open <- roc_hh %>%
-  filter(VACS == 1 | VACS == 3)                            # Dataframe of available rentals + purchases
+  filter(VACS == 1 | VACS == 3)                                   # Dataframe of available rentals + purchases
 
 for_rent <- roc_hh %>%
-  filter(VACS == 1)                                        # Dataframe of available rentals
+  filter(VACS == 1)                                               # Dataframe of available rentals
 
-tapply(roc_hh$WGTP, list(roc_hh$VACS), sum)                # There are 6,046 uninhabitable vacant properties (44.2% of total vacancies)
-prop.table(tapply(roc_hh$WGTP, list(roc_hh$VACS), sum))    # There are 5,515 available rental units (40.3% of total vacancies)
-                                                           # There are 751 inhabitable homes for sale (5.5% of total vacancies)
+tapply(roc_hh$WGTP, list(roc_hh$VACS), sum)                       # There are 6,606 uninhabitable vacant properties (49.1% of total vacancies)
+prop.table(tapply(roc_hh$WGTP, list(roc_hh$VACS), sum))           # There are 4,634 available rental units (34.4% of total vacancies)
+                                                                  # There are 516 inhabitable homes for sale (3.8% of total vacancies)
 
 #--------------------------------------
 # Vacant Homes and Rentals
 #--------------------------------------
 tapply(open$WGTP, list(open$BDSP), sum)
-prop.table(tapply(open$WGTP, list(open$BDSP), sum))     # 44.0% of vacant units are 1 bedroom or smaller
+prop.table(tapply(open$WGTP, list(open$BDSP), sum))               # 41.5% of vacant units are 1 bedroom or smaller
 
 tapply(open$WGTP, list(open$RMSP), sum)
-prop.table(tapply(open$WGTP, list(open$RMSP), sum))     # 34.7% of vacant units are 3 rooms or smaller
+prop.table(tapply(open$WGTP, list(open$RMSP), sum))               # 34.7% of vacant units are 3 rooms or smaller
 
 #--------------------------------------
 # Vacant Rentals
 #--------------------------------------
 tapply(for_rent$WGTP, list(for_rent$BDSP), sum)
-prop.table(tapply(for_rent$WGTP, list(for_rent$BDSP), sum))     # 50.0% of vacant rentals are 1 bedroom or smaller
+prop.table(tapply(for_rent$WGTP, list(for_rent$BDSP), sum))       # 46.1% of vacant rentals are 1 bedroom or smaller
 
 tapply(for_rent$WGTP, list(for_rent$RMSP), sum)
-prop.table(tapply(for_rent$WGTP, list(for_rent$RMSP), sum))     # 39.4% of vacant rentals are 3 rooms or smaller
+prop.table(tapply(for_rent$WGTP, list(for_rent$RMSP), sum))       # 38.5% of vacant rentals are 3 rooms or smaller
+
+rm(open)
 
 
 
 #===============================================================================
-# Conduct Right-Sized Analysis
+# Quantify the Space Needs of Overcrowded Rentals
 #===============================================================================
-#-------------------------------------------------------------------------------
-# Quantify the Space Needs of Overcrowded Households
-#-------------------------------------------------------------------------------
-bed_hh <- roc_hh %>%
-  select(NP, BDSP, WGTP, HINCP)
+rentals <- roc_hh %>%
+  filter(GRPIP > 0)
 
-# Create BEDR variables indicating bed need
-x <- ifelse(bed_hh$NP == 1, 0, 1)               # Recode 1-person households as needing 0 bedrooms
+#--------------------------------------
+# Create Overcrowding Variables
+#--------------------------------------
+x <- ifelse(rentals$NP == 1, 0, 1)               # Identify 1-person households
 
-bed_hh <- bed_hh %>%
-  mutate(NP_adj = NP*x) %>%                     # Adjustment to account for studio apartments
+# Calculate bed need for each household
+rentals <- rentals %>%
+  mutate(NP_adj = NP*x) %>%                     # Allows 1-person households to live in studio apartments
   mutate(BEDR2 = ceiling(NP_adj/2)) %>%         # Max 2 People Per Bedroom
-  mutate(BEDR1.5 = ceiling(NP_adj/1.5)) %>%     # Max 1.5 People Per Bedroom
-  mutate(BEDR1 = NP_adj)                        # Max 1 Person Per Bedroom
+  mutate(BEDR1.75 = ceiling(NP_adj/1.75)) %>%   # Max 1.75 People Per Bedroom
+  mutate(BEDR1.5 = ceiling(NP_adj/1.5))         # Max 1.5 People Per Bedroom
 
-# Calculate the difference between available beds and needed beds
-bed_hh <- bed_hh %>%
+# Calculate difference between available beds and needed beds
+rentals <- rentals %>%
   mutate(DIFF2 = BDSP-BEDR2) %>%
-  mutate(DIFF1.5 = BDSP-BEDR1.5) %>%
-  mutate(DIFF1 = BDSP-BEDR1)
+  mutate(DIFF1.75 = BDSP-BEDR1.75) %>%
+  mutate(DIFF1.5 = BDSP-BEDR1.5)
 
 #--------------------------------------
 # Identify Overcrowded Households
@@ -114,70 +132,69 @@ bed_hh <- bed_hh %>%
 diff_bdrm <- paste0("DIFF", toString(bdrm))
 
 # FLAG households that meet the overcrowding criteria
-bed_hh <- bed_hh %>%
-  mutate(FLAG = ifelse(get(diff_bdrm) < 0, 1, 0))
+rentals <- rentals %>%
+  mutate(FLAG_SIZE = ifelse(get(diff_bdrm) < 0, 1, 0))
 
 # Split data into crowded and uncrowded households
-bed_hh_crowd <- bed_hh %>%
+rentals_crowd <- rentals %>%
   filter(get(diff_bdrm) < 0)
-bed_hh_xcrowd <- bed_hh %>%
+rentals_xcrowd <- rentals %>%
   filter(get(diff_bdrm) >= 0)
 
 #--------------------------------------
-# De-Crowd Overcrowded Households
+# De-Crowd Households
 #--------------------------------------
-bed_hh_crowd %>%
-  summarise(bed_need = sum(WGTP))               # 1,786 households are overcrowded
-
 # Initiate loop variables
-bed_hh_crowd <- bed_hh_crowd %>%
+rentals_crowd <- rentals_crowd %>%
   mutate(DIFF_LOOP = get(diff_bdrm), NP_LOOP = NP, free_agent = 0)
 
 # Identify number of people per household who need to move to eliminate overcrowding
-for (row in 1:nrow(bed_hh_crowd)) {
-  while (bed_hh_crowd[row,"DIFF_LOOP"] < 0) {
-    bed_hh_crowd[row, "NP_LOOP"] <- bed_hh_crowd[row, "NP_LOOP"]-1
-    bed_hh_crowd[row, "NP_LOOP"] <- ifelse(bed_hh_crowd[row, "NP_LOOP"] == 1, 0, bed_hh_crowd[row, "NP_LOOP"])
-    bed_hh_crowd[row, "free_agent"]  <- bed_hh_crowd[row, "free_agent"]+1
-    bed_hh_crowd[row,"DIFF_LOOP"] <- bed_hh_crowd[row, "BDSP"] - ceiling(bed_hh_crowd[row,"NP_LOOP"]/2)
+for (row in 1:nrow(rentals_crowd)) {
+  while (rentals_crowd[row,"DIFF_LOOP"] < 0) {
+    rentals_crowd[row, "NP_LOOP"] <- rentals_crowd[row, "NP_LOOP"]-1
+    rentals_crowd[row, "NP_LOOP"] <- ifelse(rentals_crowd[row, "NP_LOOP"] == 1, 0, rentals_crowd[row, "NP_LOOP"])
+    rentals_crowd[row, "free_agent"]  <- rentals_crowd[row, "free_agent"]+1
+    rentals_crowd[row,"DIFF_LOOP"] <- rentals_crowd[row, "BDSP"] - ceiling(rentals_crowd[row,"NP_LOOP"]/2)
   }
-  bed_hh_crowd[row, "NP_LOOP"] <- bed_hh_crowd[row, "NP"] - bed_hh_crowd[row, "free_agent"]
+  rentals_crowd[row, "NP_LOOP"] <- rentals_crowd[row, "NP"] - rentals_crowd[row, "free_agent"]
 }
 
 #--------------------------------------
-# Analyze the Movers
+# Analyze Results (2 Bedroom Standard)
 #--------------------------------------
-bed_hh_crowd %>%
-  summarise(sum(WGTP*free_agent))                                         # 2,801 people need to move out of 1,786 households
+rentals_crowd %>%
+  summarise(movers = sum(WGTP*free_agent), movers_hh = sum(WGTP))         # 2,187 people need to move out of 1,501 households
 
-tapply(bed_hh_crowd$WGTP, list(bed_hh_crowd$free_agent), sum)             # 1,310 households need just one person to move out
+tapply(rentals_crowd$WGTP, list(rentals_crowd$free_agent), sum)           # 1,080 households need just one person to move out
 
-#-------------------------------------------------------------------------------
+
+
+#===============================================================================
 # Quantify the Available Space on the Market
-#-------------------------------------------------------------------------------
+#===============================================================================
 #--------------------------------------
 # Identify Available Bed Capacity
 #--------------------------------------
 for_rent %>%
-  summarise(bed_capacity = sum(WGTP))                             # 5,515 rental units available on the open market
+  summarise(bed_capacity = sum(WGTP))                             # 4,634 rental units available on the open market
 
 for_rent %>%
-  summarise(bed_capacity = sum(WGTP*BDSP))                        # 9,612 rental bedrooms available on the open market
+  summarise(bed_capacity = sum(WGTP*BDSP))                        # 8,359 rental bedrooms available on the open market
 
-tapply(for_rent$WGTP, list(for_rent$BDSP), sum)                   # 2,758 vacant rentals are 1 bedroom or smaller
-prop.table(tapply(for_rent$WGTP, list(for_rent$BDSP), sum))       # 50.0% of vacant rentals are 1 bedroom or smaller
+tapply(for_rent$WGTP, list(for_rent$BDSP), sum)                   # 2,137 vacant rentals are 1 bedroom or smaller
+prop.table(tapply(for_rent$WGTP, list(for_rent$BDSP), sum))       # 46.1% of vacant rentals are 1 bedroom or smaller
 
 #--------------------------------------
-# Comparison Table -- 2 BR Standard
+# Comparison Table (2 Bedroom Standard)
 #--------------------------------------
 # Quantify the bed need of overcrowded households
-# 0-1 bedroom | 2 bedroom | 3 bedroom | 4 bedroom
-# 1,480       | 306       | 0         | 0
-tapply(bed_hh_crowd$WGTP, list(bed_hh_crowd$free_agent), sum)
+# 0-1 bedroom | 2 bedroom | 3 bedroom | 4+ bedroom
+# 1,341       | 160       | 0         | 0
+tapply(rentals_crowd$WGTP, list(rentals_crowd$free_agent), sum)
 
 # Quantify bed availability in the open market
-# 0-1 bedroom | 2 bedroom | 3 bedroom | 4 bedroom
-# 2,758       | 1,086     | 1,364     | 307
+# 0-1 bedroom | 2 bedroom | 3 bedroom | 4+ bedroom
+# 2,137       | 1,317     | 799     | 381
 tapply(for_rent$WGTP, list(for_rent$BDSP), sum)
 
 
@@ -191,54 +208,30 @@ tapply(for_rent$WGTP, list(for_rent$BDSP), sum)
 
 
 #===============================================================================
-# Conduct Affordability Analysis
-#===============================================================================
-#-------------------------------------------------------------------------------
-# Subset to Occupied Rental Units
-#-------------------------------------------------------------------------------
-rentals <- roc_hh %>%
-  filter(GRPIP > 0)
-
-x <- ifelse(rentals$NP == 1, 0, 1)                    # Identify 1-person households
-
-# Compute Bed Need for All Renter Households
-rentals <- rentals %>%
-  mutate(NP_adj = NP*x) %>%                           # Adjustment to account for studio apartments
-  mutate(BEDR2 = ceiling(NP_adj/2)) %>%               # Max 2 People Per Bedroom
-  mutate(BEDR1.5 = ceiling(NP_adj/1.5)) %>%           # Max 1.5 People Per Bedroom
-  mutate(BEDR1 = NP_adj)                              # Max 1 Person Per Bedroom
-
-# Calculate the difference between available beds and needed beds
-rentals <- rentals %>%
-  mutate(DIFF2 = BDSP-BEDR2) %>%
-  mutate(DIFF1.5 = BDSP-BEDR1.5) %>%
-  mutate(DIFF1 = BDSP-BEDR1)
-
-#-------------------------------------------------------------------------------
 # Calculate Maximum Income (% AMI) For Which a Unit is Affordable
-#-------------------------------------------------------------------------------
+#===============================================================================
 #--------------------------------------
 # Create Annual Gross Rent Variable
 #--------------------------------------
 rentals <- rentals %>%
-  mutate(AGRNTP = GRNTP*12)
+  mutate(AGRNTP = GRNTP*(ADJHSG/1000000)*12)
 
 #--------------------------------------
 # Calculate Area Median Income
 #--------------------------------------
-ami <- 74000                                                        # Actual AMI for Rochester MSA in 2018 is $74,000
-roc_median_inc <- w.median(roc_hh$HINCP, roc_hh$WGTP)               # Median income in Rochester is $35,000
-mon_median_inc <- w.median(monroe_hh$HINCP, monroe_hh$WGTP)         # Median income in Monroe County is $58,900
+roc_hh <- roc_hh %>%
+  mutate(RHINCP = HINCP*(ADJINC/1000000))
+
+ami_roc <- w.median(roc_hh$RHINCP, roc_hh$WGTP)                   # Median income in Rochester is $33,872
 
 #--------------------------------------
 # Compute Minimum Income Cutoffs (% AMI)
 #--------------------------------------
-max_rent <- max_rent/100
+inc_pct <- inc_pct/100
 
 rentals <- rentals %>%
-  mutate(MIN_AMI = (AGRNTP / max_rent / ami)*100) %>%
-  mutate(MIN_AMI_ROC = (AGRNTP / max_rent / roc_median_inc)*100) %>%     # Assuming no more than 30% of income should be spent on housing,
-  mutate(MIN_AMI_MON = (AGRNTP / max_rent / mon_median_inc)*100)         # what is the minimum income required to rent a given unit?
+  mutate(MIN_AMI = (AGRNTP / inc_pct / ami)*100) %>%              # Assuming no more than inc_pct% of income should be spent on housing,
+  mutate(MIN_AMI_ROC = (AGRNTP / inc_pct / ami_roc)*100)          # what is the minimum income required to rent a given unit?
 
 #--------------------------------------
 # Group Income Cutoffs Into Buckets
@@ -246,27 +239,29 @@ rentals <- rentals %>%
 # [1 = <30% AMI | 2 = 30-50% AMI | 3 = 50-80% AMI | 4 = 80-120% AMI | 5 = >120% AMI]
 rentals <- rentals %>%
   mutate(CAT_MIN_AMI = cut(MIN_AMI, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE)) %>%
-  mutate(CAT_MIN_AMI_ROC = cut(MIN_AMI_ROC, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE)) %>%
-  mutate(CAT_MIN_AMI_MON = cut(MIN_AMI_MON, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE))
+  mutate(CAT_MIN_AMI_ROC = cut(MIN_AMI_ROC, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE))
 
-#-------------------------------------------------------------------------------
+
+
+#===============================================================================
 # Calculate Maximum Rent (% AMI) That Each Household Can Afford
-#-------------------------------------------------------------------------------
+#===============================================================================
 #--------------------------------------
 # Compute Household Percent AMI
 #--------------------------------------
 rentals <- rentals %>%
-  mutate(AMI_HH = (HINCP / ami)*100) %>%
-  mutate(AMI_HH_ROC = (HINCP / roc_median_inc)*100) %>%
-  mutate(AMI_HH_MON = (HINCP / mon_median_inc)*100)
+  mutate(RHINCP = HINCP*(ADJINC/1000000))
+
+rentals <- rentals %>%
+  mutate(AMI_HH = (RHINCP / ami)*100) %>%
+  mutate(AMI_HH_ROC = (RHINCP / ami_roc)*100)
 
 #--------------------------------------
 # Group Income Cutoffs Into Buckets
 #--------------------------------------
 rentals <- rentals %>%
   mutate(CAT_AMI_HH = cut(AMI_HH, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE)) %>%
-  mutate(CAT_AMI_HH_ROC = cut(AMI_HH_ROC, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE)) %>%
-  mutate(CAT_AMI_HH_MON = cut(AMI_HH_MON, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE))
+  mutate(CAT_AMI_HH_ROC = cut(AMI_HH_ROC, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE))
 
 #-------------------------------------------------------------------------------
 # Summary Statistics: Affordability at Different Income Thresholds
@@ -275,98 +270,106 @@ rentals <- rentals %>%
 # Using Actual AMI of $74,000
 #--------------------------------------
 # How many units are affordable at each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI), sum)                          # 19.9% of units are affordable to 30% AMI
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI), sum))              # 61.9% of units are affordable to 50% AMI 
+tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI), sum)                          # 17.2% of units are affordable to 30% AMI
+prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI), sum))              # 62.4% of units are affordable to 50% AMI 
 
 # Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI, rentals$BDSP), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI, rentals$BDSP), sum, default = 0))
+tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_MIN_AMI), sum)
+prop.table(tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_MIN_AMI), sum, default = 0))
 
 # How many households encompass each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_AMI_HH), sum)                           # 44.2% of households are 30% AMI or less
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH), sum))               # 62.7% of households are 50% AMI or less
+tapply(rentals$WGTP, list(rentals$CAT_AMI_HH), sum)                           # 44.8% of households are 30% AMI or less
+prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH), sum))               # 66.2% of households are 50% AMI or less
 
 # Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$CAT_AMI_HH, rentals$BEDR2), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH, rentals$BEDR2), sum, default = 0))
+tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_HH), sum)
+prop.table(tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_HH), sum, default = 0))
 
 #--------------------------------------
-# Using Monroe County AMI of $58,900
+# Using Rochester AMI of $33,872
 #--------------------------------------
 # How many units are affordable at each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_MON), sum)                       # 14.1% of units are affordable to 30% AMI
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_MON), sum))           # 37.3% of units are affordable to 50% AMI 
+tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_ROC), sum)                       # 3.8% of units are affordable to 30% AMI
+prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_ROC), sum))           # 9.4% of units are affordable to 50% AMI 
 
 # Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_MON, rentals$BDSP), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_MON, rentals$BDSP), sum, default = 0))
+tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_MIN_AMI_ROC), sum)
+prop.table(tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_MIN_AMI_ROC), sum, default = 0))
 
 # How many households encompass each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_MON), sum)                        # 36.1% of households are 30% AMI or less
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_MON), sum))            # 53.7% of households are 50% AMI or less
+tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_ROC), sum)                        # 17.7% of households are 30% AMI or less
+prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_ROC), sum))            # 34.4% of households are 50% AMI or less
 
 # Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_MON, rentals$BEDR2), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_MON, rentals$BEDR2), sum, default = 0))
+tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_HH_ROC), sum)
+prop.table(tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_HH_ROC), sum, default = 0))
 
-#--------------------------------------
-# Using Rochester AMI of $35,000
-#--------------------------------------
-# How many units are affordable at each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_ROC), sum)                       # 6.9% of units are affordable to 30% AMI
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_ROC), sum))           # 14.0% of units are affordable to 50% AMI 
 
-# Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_ROC, rentals$BDSP), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_ROC, rentals$BDSP), sum, default = 0))
 
-# How many households encompass each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_ROC), sum)                        # 22.7% of households are 30% AMI or less
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_ROC), sum))            # 36.0% of households are 50% AMI or less
-
-# Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_ROC, rentals$BEDR2), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_ROC, rentals$BEDR2), sum, default = 0))
+##############################################################################################################
+#                                                                                                            #
+#   Rent prices are not available for vacant units. As a result, we cannot estimate the affordability gap.   #
+#                                                                                                            #
+##############################################################################################################
 
 
 
 #===============================================================================
-# Calculate the Right-Sized Affordable Housing Gap
+# Estimating the Current Right-Sized Affordable Housing Gap
 #===============================================================================
-#-------------------------------------------------------------------------------
-# What is the Current Right-Sized Affordable Housing Gap?
-#-------------------------------------------------------------------------------
-# Create separate flags for size and affordability
+#--------------------------------------
+# Create Flags for Size and Affordability
+#--------------------------------------
 rentals <- rentals %>%
   mutate(FLAG_SIZE = ifelse(get(diff_bdrm) < 0, 1, 0)) %>%
   mutate(FLAG_AFF = ifelse(GRPIP > 30, 1, 0))
 
 flags <- rentals %>%
-  select(WGTP, DIFF2, DIFF1.5, DIFF1, FLAG_SIZE, GRPIP, FLAG_AFF)
+  select(WGTP, DIFF2, DIFF1.75, DIFF1.5, FLAG_SIZE, GRPIP, FLAG_AFF)
 
 flags %>%
-  summarise(overcrowded = sum(WGTP*FLAG_SIZE, na.rm = TRUE))            # 1,478 renter-occupied households are not right-sized
+  summarise(overcrowded = sum(WGTP*FLAG_SIZE, na.rm = TRUE))            # 1,501 renter-occupied households are not right-sized
 
 flags %>%
-  summarise(rent_burden = sum(WGTP*FLAG_AFF, na.rm = TRUE))             # 27,380 renter-occupied households are not affordable
+  summarise(rent_burden = sum(WGTP*FLAG_AFF, na.rm = TRUE))             # 29,933 renter-occupied households are not affordable
 
-# Combine flags into a single measure
+#--------------------------------------
+# Combine Flags Into a Single Measure
+#--------------------------------------
 flags <- flags %>%
   mutate(FLAG = ifelse(FLAG_SIZE == 1 | FLAG_AFF == 1, 1, 0))
 
 flags %>%
-  summarise(need = sum(WGTP*FLAG, na.rm = TRUE))                        # 28,351 households are not right-sized and/or affordable
+  summarise(need = sum(WGTP*FLAG, na.rm = TRUE))                        # 30,671 households are not right-sized and/or affordable
 
-#-------------------------------------------------------------------------------
-# How Large is the Gap Assuming Perfect Sorting Conditions?
-#-------------------------------------------------------------------------------
+#--------------------------------------
+# Standard Error of Current Gap
+#--------------------------------------
+rentals <- rentals %>%
+  mutate(FLAG = ifelse(FLAG_SIZE == 1 | FLAG_AFF == 1, 1, 0))
+
+# Generate point estimate
+se.est <- sum(ifelse(rentals$FLAG==1,rentals$WGTP,0))                   # Point Estimate: 30,671 households are not RSA
+
+# Compute standard errors
+se.rep.ests <- sapply(wrep.names, function(n) 
+  sum(ifelse(rentals$FLAG==1,rentals[[n]],0)))
+se <- sqrt((4/80) * sum((se.rep.ests - se.est)^2))                      # Standard Error: 731 households
+se_ci90 <- c(se.est-(1.64*se), se.est+(1.64*se))                        # 90% Confidence Interval: [29,472 -- 31,870]
+se_ci95 <- c(se.est-(1.96*se), se.est+(1.96*se))                        # 95% Confidence Interval: [29,238 -- 32,104]
+
+
+
+#===============================================================================
+# Estimating the Right-Sized Affordable Housing Gap Under "Perfect Sorting" Conditions
+#===============================================================================
 bed_need <- paste0("BEDR", toString(bdrm))
 
 #--------------------------------------
 # Create HH/Unit-Specific Dataframes
 #--------------------------------------
 sort_hh <- rentals %>%
-  select(SERIALNO, WGTP, HINCP, NP, BEDR2, BEDR1.5, BEDR1)
+  select(SERIALNO, WGTP, RHINCP, NP, BEDR2, BEDR1.75, BEDR1.5)
 
 sort_unit <- rentals %>%
   select(SERIALNO, WGTP, GRNTP, AGRNTP, BDSP)
@@ -374,17 +377,17 @@ sort_unit <- rentals %>%
 #--------------------------------------
 # Sort Dataframes by HH Income/Unit Rent
 #--------------------------------------
-sort_hh <- sort_hh[order(sort_hh$HINCP, sort_hh$NP),]
+sort_hh <- sort_hh[order(sort_hh$RHINCP, sort_hh$NP),]
 sort_unit <- sort_unit[order(sort_unit$AGRNTP, sort_unit$BDSP),]
 
 #--------------------------------------
 # Apply Weights to Expand Dataframes
 #--------------------------------------
-HINCP_expand <- rep(sort_hh$HINCP, sort_hh$WGTP)
+RHINCP_expand <- rep(sort_hh$RHINCP, sort_hh$WGTP)
 NP_expand    <- rep(sort_hh$NP, sort_hh$WGTP)
 BEDR2_expand <- rep(sort_hh$BEDR2, sort_hh$WGTP)
+BEDR1.75_expand <- rep(sort_hh$BEDR1.75, sort_hh$WGTP)
 BEDR1.5_expand <- rep(sort_hh$BEDR1.5, sort_hh$WGTP)
-BEDR1_expand <- rep(sort_hh$BEDR1, sort_hh$WGTP)
 
 AGRNTP_expand <- rep(sort_unit$AGRNTP, sort_unit$WGTP)
 BDSP_expand <- rep(sort_unit$BDSP, sort_unit$WGTP)
@@ -392,15 +395,15 @@ BDSP_expand <- rep(sort_unit$BDSP, sort_unit$WGTP)
 #--------------------------------------
 # Re-create Dataframe
 #--------------------------------------
-sort_hh <- data.frame(HINCP = HINCP_expand, NP = NP_expand, BEDR2 = BEDR2_expand, 
-                      BEDR1.5 = BEDR1.5_expand, BEDR1 = BEDR1_expand)
+sort_hh <- data.frame(RHINCP = RHINCP_expand, NP = NP_expand, BEDR2 = BEDR2_expand, 
+                      BEDR1.5 = BEDR1.5_expand, BEDR1.75 = BEDR1.75_expand)
 sort_unit <- data.frame(AGRNTP = AGRNTP_expand, BDSP = BDSP_expand)
 
 #--------------------------------------
 # Initialize Loop Variables
 #--------------------------------------
 sort_hh <- sort_hh %>%
-  mutate(MAX_RENT = HINCP*max_rent, RENTED = 0, INDEX = 0)
+  mutate(MAX_RENT = RHINCP*inc_pct, RENTED = 0, INDEX = 0)
 
 sort_unit <- sort_unit %>%
   mutate(OCCUPIED = 0, INDEX = 0)
@@ -437,6 +440,9 @@ for (row in 1:nrow(sort_unit)) {
     break()
   }
 }
+
+rm(x, row, index, rent, beds, AGRNTP_expand, BDSP_expand, RHINCP_expand, NP_expand)
+rm(BEDR1.5_expand, BEDR1.75_expand, BEDR2_expand)
 
 #-------------------------------------------------------------------------------
 # Results Analysis
@@ -506,26 +512,148 @@ sort_unit %>%
 # 5+ Bedroom
 #--------------------------------------
 sort_hh %>%
-  filter(get(bed_need) == 5 | get(bed_need) == 6) %>%
+  filter(get(bed_need) >= 5) %>%
   summarise(rentals = sum(one), xGAP = sum(RENTED), GAP = sum(one)-sum(RENTED), GAP_pct = 1-(sum(RENTED)/sum(one)),
             renters = sum(one*NP), pxGAP = sum(RENTED*NP), pGAP = sum(one*NP)-sum(RENTED*NP), pGAP_pct = 1-(sum(RENTED*NP)/sum(one*NP)))
 
 sort_unit %>%
-  filter(BDSP == 5 | BDSP == 6) %>%
+  filter(BDSP >= 5) %>%
   summarise(rentals = sum(one), xGAP = sum(OCCUPIED), GAP = sum(one)-sum(OCCUPIED), GAP_pct = 1-(sum(OCCUPIED)/sum(one)))
 
 #--------------------------------------
 # Household Characteristics
 #--------------------------------------
-gap <- sort_hh %>%
-  filter(RENTED == 0)
-
-gap %>%
-  summarise(max_income = max(HINCP))              # The max income for GAP households is $26,100
+sort_hh %>%
+  filter(RENTED == 0) %>%                                                              # The max income for GAP households is $26,442
+  summarise(max_inc = max(RHINCP), avg_inc = mean(RHINCP), med_inc = median(RHINCP))   # The median income for GAP households is $10,188
 
 rentals %>%
-  filter(HINCP <= 26100) %>%                      # In the entire rental universe, 26,025 households make <$26,100
-  summarise(num = sum(WGTP))                      # Of these households, 12,907 (49.6%) are in the gap
+  filter(RHINCP <= 26442) %>%                     # In the entire rental universe, 27,058 households make <$26,442
+  summarise(num = sum(WGTP))                      # Of these households, 14,839 (54.8%) are in the gap
+
+rentals %>%
+  filter(RHINCP <= 10188) %>%                     # In the entire rental universe, 9,465 households make <= $10,188
+  summarise(num = sum(WGTP))                      # Of these households, 7,420 (78.4%) are in the gap
+
+sort_hh %>%
+  filter(RENTED == 0 & RHINCP <= 10188) %>%
+  summarise(gap_poor = sum(one))
 
 
-#write.csv(sort_hh, file = "./sort_hh.csv")
+
+#===============================================================================
+# Standard Error of the Right-Sized Affordable Housing Gap
+#===============================================================================
+gap_count <- sum(ifelse(sort_hh$RENTED==0,1,0))
+xgap_count <- sum(sort_hh$RENTED)
+rent_count <- nrow(sort_hh)
+
+#--------------------------------------
+# Create SE Dataframes
+#--------------------------------------
+prep_hh <- rentals %>%
+  select(SERIALNO, WGTP, RHINCP, NP, BEDR2, BEDR1.75, BEDR1.5, wrep.names)
+
+prep_unit <- rentals %>%
+  select(SERIALNO, WGTP, GRNTP, AGRNTP, BDSP, wrep.names)
+
+#--------------------------------------
+# Sort Dataframes
+#--------------------------------------
+prep_hh <- prep_hh[order(prep_hh$RHINCP, prep_hh$NP),]
+prep_unit <- prep_unit[order(prep_unit$AGRNTP, prep_unit$BDSP),]
+
+#--------------------------------------
+# Apply Replicate Weights
+#--------------------------------------
+for (i in 1:80) {
+  wgt <- paste0("WGTP", i)
+  
+  # Apply weights to expand dataframes
+  RHINCP_expand <- rep(prep_hh$RHINCP, prep_hh[[wgt]])
+  NP_expand    <- rep(prep_hh$NP, prep_hh[[wgt]])
+  BEDR2_expand <- rep(prep_hh$BEDR2, prep_hh[[wgt]])
+  
+  AGRNTP_expand <- rep(prep_unit$AGRNTP, prep_unit[[wgt]])
+  BDSP_expand <- rep(prep_unit$BDSP, prep_unit[[wgt]])
+
+  # Re-create dataframes
+  rep_hh <- data.frame(MAX_RENT = RHINCP_expand*inc_pct, NP = NP_expand, BEDR2 = BEDR2_expand, RENTED = 0, INDEX = 0)
+  rep_unit <- data.frame(AGRNTP = AGRNTP_expand, BDSP = BDSP_expand, OCCUPIED = 0, INDEX = 0)
+  
+  #--------------------------------------
+  # Sorting Loop With Replicate Weights
+  #--------------------------------------
+  for (row in 1:nrow(rep_unit)) {
+    #--------------------------------------
+    # Determine Unit Cost and Size Criteria
+    #--------------------------------------
+    rent <- rep_unit[row,"AGRNTP"]
+    beds <- rep_unit[row,"BDSP"]
+    
+    #--------------------------------------
+    # Match Unit to Minimum HH That Meets Criteria
+    #--------------------------------------
+    index <- which(rep_hh$MAX_RENT >= rent & rep_hh$RENTED == 0 & rep_hh[,bed_need] <= beds)[1]
+    index <- ifelse(is.na(index),0,index)
+    
+    #--------------------------------------
+    # Update Dataframes to Reflect the Match
+    #--------------------------------------
+    rep_hh[index,"INDEX"] <- row
+    rep_hh[index,"RENTED"] <- rep_hh[index,"RENTED"] + 1
+    
+    rep_unit[row,"INDEX"] <- index
+    rep_unit[row,"OCCUPIED"] <- ifelse(rep_unit[row,"INDEX"] == 0, 0, 1)
+    
+    #--------------------------------------
+    # Break at Wealthiest Renter
+    #--------------------------------------
+    if (rep_hh[nrow(rep_hh), "RENTED"] == 1) {
+      break()
+    }
+  }
+  xgap_est <- sum(rep_hh$RENTED)
+  xgap_count <- c(xgap_count,xgap_est)
+  
+  gap_est <- sum(ifelse(rep_hh$RENTED==0,1,0))
+  gap_count <- c(gap_count,gap_est)
+  
+  rent_est <- sum(xgap_est,gap_est)
+  rent_count <- c(rent_count,rent_est)
+}
+
+#--------------------------------------
+# Standard Error Computations
+#--------------------------------------
+# Affordable Housing Gap
+gap_est <- sum(ifelse(sort_hh$RENTED==0,1,0))                               # Point Estimate:           14,839 households
+gap_se <- sqrt((4/80) * sum((gap_count - gap_est)^2))                       # Standard Error:              631 households
+gap_ci90 <- c(gap_est-(1.64*gap_se), gap_est+(1.64*gap_se))                 # 90% Confidence Interval: [13,803 -- 15,875]
+gap_ci95 <- c(gap_est-(1.96*gap_se), gap_est+(1.96*gap_se))                 # 95% Confidence Interval: [13,601 -- 16,077]
+
+# Affordable Housing XGap
+xgap_est <- sum(sort_hh$RENTED)                                             # Point Estimate:           37,527 households
+xgap_se <- sqrt((4/80) * sum((xgap_count - xgap_est)^2))                    # Standard Error:              879 households
+xgap_ci90 <- c(xgap_est-(1.64*xgap_se), xgap_est+(1.64*xgap_se))            # 90% Confidence Interval: [36,086 -- 38,968]
+xgap_ci95 <- c(xgap_est-(1.96*xgap_se), xgap_est+(1.96*xgap_se))            # 95% Confidence Interval: [35,805 -- 39,249]
+
+# Total Renters
+rent_est <- nrow(sort_hh)                                                   # Point Estimate:           52,366 households
+rent_se <- sqrt((4/80) * sum((rent_count - rent_est)^2))                    # Standard Error:              771 households
+rent_ci90 <- c(rent_est-(1.64*rent_se), rent_est+(1.64*rent_se))            # 90% Confidence Interval: [51,101 -- 53,631]
+rent_ci95 <- c(rent_est-(1.96*rent_se), rent_est+(1.96*rent_se))            # 95% Confidence Interval: [50,854 -- 53,878]
+
+# Proportion of Renters in Gap
+prop <- (gap_est/rent_est)                                                  # Point Estimate:            28.3%
+prop_se <- (1/rent_est) * sqrt(gap_se^2 - (prop^2*rent_se^2))               # Standard Error:             1.1%
+prop_ci90 <- c(prop-(1.64*prop_se), prop+(1.64*prop_se))                    # 90% Confidence Interval:  [26.5% -- 30.2%]
+prop_ci95 <- c(prop-(1.96*prop_se), prop+(1.96*prop_se))                    # 95% Confidence Interval:  [26.1% -- 30.6%]
+
+
+
+#===============================================================================
+# Export to .CSV
+#===============================================================================
+#write.csv(sort_hh, file = "./Data_Subsets/sort_hh.csv")
+#write.csv(sort_unit, file = "./Data_Subsets/sort_unit.csv")
