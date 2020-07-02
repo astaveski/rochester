@@ -3,7 +3,7 @@
 # * PURPOSE: Determine the extent of overcrowding in Rochester, NY
 # * AUTHORS: Adam Staveski
 # * DATE CREATED: June 10, 2020
-# * DATE LAST MODIFIED: June 25, 2020
+# * DATE LAST MODIFIED: July 2, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
@@ -11,18 +11,22 @@ library(survey)
 library(Hmisc)
 library(ggplot2)
 
-setwd("/Users/astav/Documents/Employment/Harvard-Bloomberg/Rochester/R/Data/PUMS")
+#--------------------------------------
+# Select Dataset
+#--------------------------------------
+pums <- 5             # Which PUMS dataset should be used?
+                      # Options: 1 / 5 --> 1-year PUMS / 5-year PUMS
 
 #--------------------------------------
 # Select standards for overcrowding
 #--------------------------------------
-bdrm  <- 2          # Options: 2 / 1.75 / 1.5 people per bedroom
-rm    <- 1.5        # Options: 2 / 1.5 / 1 people per room
+bdrm  <- 2            # Options: 2 / 1.75 / 1.5 people per bedroom
+rm    <- 1.5          # Options: 2 / 1.5 / 1 people per room
 
 #--------------------------------------
 # Select AMI number for analysis
 #--------------------------------------
-ami <- 74000        # Options: 74000 (Actual AMI) / 58900 (Monroe AMI) / 35000 (Rochester AMI)
+ami <- 74000          # Options: 74000 (Actual AMI) / 58900 (Monroe AMI) / 35000 (Rochester AMI)
 
 
 
@@ -30,23 +34,20 @@ ami <- 74000        # Options: 74000 (Actual AMI) / 58900 (Monroe AMI) / 35000 (
 # Data Import and Preparation
 #===============================================================================
 #--------------------------------------
-# Load PUMS Data
+# Set Working Directory
 #--------------------------------------
-pums_hh <- read_csv("psam_h36.csv", guess_max = 12000)
-pums_p <- read_csv("psam_p36.csv", guess_max = 12000)
+wd <- paste0("/Users/astav/Documents/Employment/Harvard-Bloomberg/Rochester/R/PUMS_",pums,"_Year/Data/")
+setwd(wd)
+rm(wd)
 
 #--------------------------------------
-# Select Relevant PUMAs
+# Load Rochester PUMS Data
 #--------------------------------------
-roc_hh <- pums_hh %>%
-  filter(PUMA == "00902" | PUMA == "00903")
-roc_p <- pums_p %>%
-  filter(PUMA == "00902" | PUMA == "00903")
-
-rm("pums_hh", "pums_p")
+load("./roc_hh.Rda")
+load("./roc_p.Rda")
 
 #--------------------------------------
-# Merge Household and Person Datasets
+# Merge Household and Person-Level Data
 #--------------------------------------
 roc <- merge(roc_hh,roc_p, by="SERIALNO", all.x = TRUE, suffixes = c(".hh", ".p"))
 
@@ -76,19 +77,20 @@ ami50 <- ami*0.5
 ami80 <- ami*0.8
 ami120 <- ami*1.2
 
-# Cut Household Income Into AMI Buckets
-rentals$AMI_CAT <- cut(rentals$HINCP, breaks = c(0,ami30,ami50,ami80,ami120,10000000), labels = c(1,2,3,4,5), right = TRUE)
+# Cut Real Household Income Into AMI Buckets
+rentals$RHINCP <- rentals$HINCP*(rentals$ADJINC/1000000)
+rentals$AMI_CAT <- cut(rentals$RHINCP, breaks = c(0,ami30,ami50,ami80,ami120,1500000), labels = c(1,2,3,4,5), right = TRUE)
 
 # Summary Statistics
 tapply(rentals$WGTP, list(rentals$AMI_CAT), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$AMI_CAT), sum))      # <30% AMI is largest category (44.2% of renter households)
+prop.table(tapply(rentals$WGTP, list(rentals$AMI_CAT), sum))      # <30% AMI is largest category (44.8% of renter households)
 
 #--------------------------------------
 # Household Income Quintiles: [1= 0-20%, 2= 20-40%, 3= 40-60%, 4= 60-80%, 5=80-100%]
 #--------------------------------------
-# Cut Household Income Into Income Quintiles
-with(rentals, Hmisc::wtd.quantile(HINCP, probs = c(0.2,0.4,0.6,0.8), weights=WGTP))
-rentals$INC_CAT <- cut(rentals$HINCP, breaks = c(-1,10000,20000,35000,61000,1000000), labels = c(1,2,3,4,5), right = TRUE)
+# Cut Real Household Income Into Income Quintiles
+with(rentals, Hmisc::wtd.quantile(RHINCP, probs = c(0.2,0.4,0.6,0.8), weights=WGTP))
+rentals$INC_CAT <- cut(rentals$RHINCP, breaks = c(-1,10000,20000,35000,61000,1500000), labels = c(1,2,3,4,5), right = TRUE)
 
 # Summary Statistics
 tapply(rentals$WGTP, list(rentals$INC_CAT), sum)
@@ -102,7 +104,7 @@ renters <- renters %>%
 
 # Summary Statistics
 tapply(renters$PWGTP, list(renters$HISP_CAT), sum)
-prop.table(tapply(renters$PWGTP, list(renters$HISP_CAT), sum))    # 21.6% of renters are Hispanic
+prop.table(tapply(renters$PWGTP, list(renters$HISP_CAT), sum))    # 20.6% of renters are Hispanic
 
 #--------------------------------------
 # Race: [1=White,2=Black,3=Native American,6=Asian,10=Hispanic]
@@ -112,8 +114,8 @@ renters <- renters %>%
   mutate(RACE_CAT = ifelse(HISP=="01",RAC1P,10))
 
 # Summary Statistics
-tapply(renters$PWGTP, list(renters$RACE_CAT), sum)                # 27.8% of renters are white
-prop.table(tapply(renters$PWGTP, list(renters$RACE_CAT), sum))    # 42.7% of renters are black
+tapply(renters$PWGTP, list(renters$RACE_CAT), sum)                # 28.9% of renters are white
+prop.table(tapply(renters$PWGTP, list(renters$RACE_CAT), sum))    # 44.4% of renters are black
 
 #--------------------------------------
 # College Student: [0= Non-Student, 1= Student]
@@ -125,7 +127,7 @@ renters <- renters %>%
 
 # Summary Statistics
 tapply(renters$PWGTP, list(renters$COLLEGE), sum)
-prop.table(tapply(renters$PWGTP, list(renters$COLLEGE), sum))     # 10.6% of renters are in college
+prop.table(tapply(renters$PWGTP, list(renters$COLLEGE), sum))     # 8.9% of renters are in college
 
 #--------------------------------------
 # Age Buckets: [1= 0-17, 2= 18-39, 3= 40-64, 4= 65+]
@@ -135,8 +137,8 @@ renters <- renters %>%
   mutate(AGE_CAT = cut(renters$AGEP, breaks = c(-1,18,40,65,100), labels = c(1,2,3,4), right = FALSE))
 
 # Summary Statistics
-tapply(renters$PWGTP, list(renters$AGE_CAT), sum)                 # 41.3% of renters are ages 18-39
-prop.table(tapply(renters$PWGTP, list(renters$AGE_CAT), sum))     # 26.8% of renters are ages 0-17
+tapply(renters$PWGTP, list(renters$AGE_CAT), sum)                 # 41.4% of renters are ages 18-39
+prop.table(tapply(renters$PWGTP, list(renters$AGE_CAT), sum))     # 28.1% of renters are ages 0-17
 
 #--------------------------------------
 # Citizenship Status: [1= Citizen at Birth, 2= Naturalized Citizen, 3= Non-Citizen]
@@ -148,8 +150,8 @@ renters <- renters %>%
   mutate(CIT_CAT = ifelse(CIT==5,3,CIT_CAT))
 
 # Summary Statistics
-tapply(renters$PWGTP, list(renters$CIT_CAT), sum)                 # 88.4% of renters were U.S. citizens at birth
-prop.table(tapply(renters$PWGTP, list(renters$CIT_CAT), sum))     # 8.0% are not U.S. citizens
+tapply(renters$PWGTP, list(renters$CIT_CAT), sum)                 # 91.9% of renters were U.S. citizens at birth
+prop.table(tapply(renters$PWGTP, list(renters$CIT_CAT), sum))     # 5.3% are not U.S. citizens
 
 
 
@@ -184,12 +186,12 @@ rentals %>%
   summarise(all = sum(WGTP), crowd = sum(WGTP*FLAG), crowd_pct = crowd/all, crowd2 = sum(WGTP*FLAG2), crowd2_pct = (crowd2/all))
 
 # Standard error of crowded rentals
-pt.est <- sum(rentals$WGTP*rentals$FLAG)                          # Point Estimate:           1,478 rental households are crowded
+pt.est <- sum(rentals$WGTP*rentals$FLAG)                          # Point Estimate:           1,501 rental households are crowded
 rep.ests <- sapply(wrep.names, function(n) 
   sum(rentals[[n]]*rentals$FLAG))
-se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           401 rental households
-ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [820 -- 2,136]
-ci95 <- c(pt.est-(1.96*se), pt.est+(1.96*se))                     # 95% Confidence Interval:  [692 -- 2,264]
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           189 rental households
+ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [1,192 -- 1,810]
+ci95 <- c(pt.est-(1.96*se), pt.est+(1.96*se))                     # 95% Confidence Interval:  [1,131 -- 1,871]
 
 # Isolate crowded rental households
 rentals_crowd <- rentals %>%
@@ -223,12 +225,12 @@ rentals %>%
   summarise(all = sum(WGTP), crowd = sum(WGTP*RFLAG), crowd_pct = crowd/all, crowd2 = sum(WGTP*RFLAG2), crowd2_pct = (crowd2/all))
 
 # Standard error of crowded rentals
-pt.est <- sum(rentals$WGTP*rentals$RFLAG)                         # Point Estimate:           973 rental households are crowded
+pt.est <- sum(rentals$WGTP*rentals$RFLAG)                         # Point Estimate:            485 rental households are crowded
 rep.ests <- sapply(wrep.names, function(n) 
   sum(rentals[[n]]*rentals$RFLAG))
-se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           391 rental households
-ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [331 -- 1,615]
-ci95 <- c(pt.est-(1.96*se), pt.est+(1.96*se))                     # 95% Confidence Interval:  [206 -- 1,740]
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:            130 rental households
+ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [272 -- 698]
+ci95 <- c(pt.est-(1.96*se), pt.est+(1.96*se))                     # 95% Confidence Interval:  [230 -- 740]
 
 # Isolate crowded rentals
 rentals_rcrowd <- rentals %>%
@@ -251,32 +253,32 @@ renters_xcrowd <- merge(rentals_xcrowd,renters, by="SERIALNO", suffixes = c(".hh
 
 # Count crowded individuals
 renters_crowd %>%
-  summarise(crowd = sum(PWGTP), vcrowd = sum(PWGTP*FLAG2))        # There are 6,159 overcrowded renters (1,744 severely overcrowded)
+  summarise(crowd = sum(PWGTP), vcrowd = sum(PWGTP*FLAG2))        # There are 6,709 overcrowded renters (1,226 severely overcrowded)
 
 renters %>%
-  summarise(count = sum(PWGTP))                                   # There are 115,048 renters, so 5.4% are overcrowded (1.5% severely)
+  summarise(count = sum(PWGTP))                                   # There are 118,357 renters, so 5.7% are overcrowded (1.0% severely)
 
 # Standard Error -- Crowded Renters
-pt.est1 <- sum(renters_crowd$PWGTP)                               # Point Estimate:           6,159 renters
+pt.est1 <- sum(renters_crowd$PWGTP)                               # Point Estimate:           6,709 renters
 rep.ests <- sapply(prep.names, function(n) 
   sum(renters_crowd[[n]]))
-se1 <- sqrt((4/80) * sum((rep.ests - pt.est1)^2))                 # Standard Error:           2,014 renters
-ci90 <- c(pt.est1-(1.64*se1), pt.est1+(1.64*se1))                 # 90% Confidence Interval:  [2,856 -- 9,462]
-ci95 <- c(pt.est1-(1.96*se1), pt.est1+(1.96*se1))                 # 95% Confidence Interval:  [2,211 -- 10,107]
+se1 <- sqrt((4/80) * sum((rep.ests - pt.est1)^2))                 # Standard Error:            782 renters
+ci90 <- c(pt.est1-(1.64*se1), pt.est1+(1.64*se1))                 # 90% Confidence Interval:  [5,426 -- 7,992]
+ci95 <- c(pt.est1-(1.96*se1), pt.est1+(1.96*se1))                 # 95% Confidence Interval:  [5,176 -- 8,242]
 
 # Standard Error -- Total Renters
-pt.est2 <- sum(renters$PWGTP)                                     # Point Estimate:           115,048 renters
+pt.est2 <- sum(renters$PWGTP)                                     # Point Estimate:           118,357 renters
 rep.ests <- sapply(prep.names, function(n) 
   sum(renters[[n]]))
-se2 <- sqrt((4/80) * sum((rep.ests - pt.est2)^2))                 # Standard Error:           4,368 renters
-ci90 <- c(pt.est2-(1.64*se2), pt.est2+(1.64*se2))                 # 90% Confidence Interval:  [107,884 -- 122,212]
-ci95 <- c(pt.est2-(1.96*se2), pt.est2+(1.96*se2))                 # 95% Confidence Interval:  [106,486 -- 123,610]
+se2 <- sqrt((4/80) * sum((rep.ests - pt.est2)^2))                 # Standard Error:           1,651 renters
+ci90 <- c(pt.est2-(1.64*se2), pt.est2+(1.64*se2))                 # 90% Confidence Interval:  [115,649 -- 121,065]
+ci95 <- c(pt.est2-(1.96*se2), pt.est2+(1.96*se2))                 # 95% Confidence Interval:  [115,120 -- 121,594]
 
 # Standard Error -- Proportion: Crowded Renters/Total Renters
-prop <- (pt.est1/pt.est2)                                         # Point Estimate:           5.4% of renters are overcrowded
-se_prop <- (1/pt.est2) * sqrt(se1^2 - prop^2*se2^2 )              # Standard Error:           1.74 percentage points
-se_ci90 <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))            # 90% Confidence Interval:  [2.5% -- 8.2%]
-se_ci95 <- c(prop-(1.96*se_prop), prop+(1.96*se_prop))            # 90% Confidence Interval:  [1.9% -- 8.8%]
+prop <- (pt.est1/pt.est2)                                         # Point Estimate:           5.7% of renters are overcrowded
+se_prop <- (1/pt.est2) * sqrt(se1^2 - prop^2*se2^2 )              # Standard Error:           0.66 percentage points
+se_ci90 <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))            # 90% Confidence Interval:  [4.6% -- 6.7%]
+se_ci95 <- c(prop-(1.96*se_prop), prop+(1.96*se_prop))            # 95% Confidence Interval:  [4.4% -- 7.0%]
 
 
 #--------------------------------------
@@ -288,32 +290,32 @@ renters_rxcrowd <- merge(rentals_rxcrowd,renters, by="SERIALNO", suffixes = c(".
 
 # Count crowded individuals
 renters_rcrowd %>%
-  summarise(crowd = sum(PWGTP), vcrowd = sum(PWGTP*RFLAG2))       # There are 3,977 overcrowded renters (0 severely overcrowded)
+  summarise(crowd = sum(PWGTP), vcrowd = sum(PWGTP*RFLAG2))       # There are 1,862 overcrowded renters (0 severely overcrowded)
 
 renters %>%
-  summarise(count = sum(PWGTP))                                   # There are 115,048 renters, so 3.5% are overcrowded (0% severely)
+  summarise(count = sum(PWGTP))                                   # There are 118,357 renters, so 1.6% are overcrowded (0% severely)
 
 # Standard Error -- Crowded Renters
-pt.est1 <- sum(renters_rcrowd$PWGTP)                              # Point Estimate:           3,977 renters
+pt.est1 <- sum(renters_rcrowd$PWGTP)                              # Point Estimate:           1,862 renters
 rep.ests <- sapply(prep.names, function(n) 
   sum(renters_rcrowd[[n]]))
-se1 <- sqrt((4/80) * sum((rep.ests - pt.est1)^2))                 # Standard Error:           1,956 renters
-ci90 <- c(pt.est1-(1.64*se1), pt.est1+(1.64*se1))                 # 90% Confidence Interval:  [770 -- 7,184]
-ci95 <- c(pt.est1-(1.96*se1), pt.est1+(1.96*se1))                 # 95% Confidence Interval:  [144 -- 7,810]
+se1 <- sqrt((4/80) * sum((rep.ests - pt.est1)^2))                 # Standard Error:           519 renters
+ci90 <- c(pt.est1-(1.64*se1), pt.est1+(1.64*se1))                 # 90% Confidence Interval:  [1,011 -- 2,713]
+ci95 <- c(pt.est1-(1.96*se1), pt.est1+(1.96*se1))                 # 95% Confidence Interval:  [845 -- 2,879]
 
 # Standard Error -- Total Renters
-pt.est2 <- sum(renters$PWGTP)                                     # Point Estimate:           115,048 renters
+pt.est2 <- sum(renters$PWGTP)                                     # Point Estimate:           118,357 renters
 rep.ests <- sapply(prep.names, function(n) 
   sum(renters[[n]]))
-se2 <- sqrt((4/80) * sum((rep.ests - pt.est2)^2))                 # Standard Error:           4,368 renters
-ci90 <- c(pt.est2-(1.64*se2), pt.est2+(1.64*se2))                 # 90% Confidence Interval:  [107,884 -- 122,212]
-ci95 <- c(pt.est2-(1.96*se2), pt.est2+(1.96*se2))                 # 95% Confidence Interval:  [106,486 -- 123,610]
+se2 <- sqrt((4/80) * sum((rep.ests - pt.est2)^2))                 # Standard Error:           1,651 renters
+ci90 <- c(pt.est2-(1.64*se2), pt.est2+(1.64*se2))                 # 90% Confidence Interval:  [115,649 -- 121,065]
+ci95 <- c(pt.est2-(1.96*se2), pt.est2+(1.96*se2))                 # 95% Confidence Interval:  [115,120 -- 121,594]
 
 # Standard Error -- Proportion: Crowded Renters/Total Renters
-prop <- (pt.est1/pt.est2)                                         # Point Estimate:           3.5% of renters are overcrowded
-se_prop <- (1/pt.est2) * sqrt(se1^2 - prop^2*se2^2 )              # Standard Error:           1.69 percentage points
-se_ci90 <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))            # 90% Confidence Interval:  [0.7% -- 6.2%]
-se_ci95 <- c(prop-(1.96*se_prop), prop+(1.96*se_prop))            # 90% Confidence Interval:  [0.1% -- 6.8%]
+prop <- (pt.est1/pt.est2)                                         # Point Estimate:           1.6% of renters are overcrowded
+se_prop <- (1/pt.est2) * sqrt(se1^2 - prop^2*se2^2 )              # Standard Error:           0.44 percentage points
+se_ci90 <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))            # 90% Confidence Interval:  [0.9% -- 2.3%]
+se_ci95 <- c(prop-(1.96*se_prop), prop+(1.96*se_prop))            # 90% Confidence Interval:  [0.7% -- 2.4%]
 
 rm(pt.est1, rep.ests, se1, ci90, ci95, pt.est2, se2, prop, se_prop, se_ci90, se_ci95)
 
@@ -542,10 +544,10 @@ se_ci95 <- c(se.est-(1.96*se), se.est+(1.96*se))                            # 95
 #===============================================================================
 # Export to .CSV
 #===============================================================================
-#write.csv(rentals, file = "./rentals.csv")
-#write.csv(rentals_crowd, file = "./rentals_crowd.csv")
-#write.csv(rentals_xcrowd, file = "./rentals_xcrowd.csv")
+#write.csv(rentals, file = "./Data_Subsets/rentals.csv")
+#write.csv(rentals_crowd, file = "./Data_Subsets/rentals_crowd.csv")
+#write.csv(rentals_xcrowd, file = "./Data_Subsets/rentals_xcrowd.csv")
 
-#write.csv(renters, file = "./renters.csv")
-#write.csv(renters_crowd, file = "./renters_crowd.csv")
-#write.csv(renters_xcrowd, file = "./renters_xcrowd.csv")
+#write.csv(renters, file = "./Data_Subsets/renters.csv")
+#write.csv(renters_crowd, file = "./Data_Subsets/renters_crowd.csv")
+#write.csv(renters_xcrowd, file = "./Data_Subsets/renters_xcrowd.csv")
