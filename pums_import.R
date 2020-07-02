@@ -51,15 +51,16 @@ roc <- merge(roc_hh,roc_p, by="SERIALNO", all.x = TRUE, suffixes = c(".hh", ".p"
 # Generate Variables for Analysis
 #===============================================================================
 #--------------------------------------
-# AMI Thresholds
+# AMI Thresholds [1= <30% AMI, 2= 30-50% AMI, 3= 50-80% AMI, 4= 80-120% AMI, 5= >120% AMI]
 #--------------------------------------
+# Compute AMI Thresholds
 ami30 <- ami*0.3
 ami50 <- ami*0.5
 ami80 <- ami*0.8
 ami120 <- ami*1.2
 
-AMI_CAT <- cut(rentals$HINCP, breaks = c(0,ami30,ami50,ami80,ami120,10000000), labels = c(1,2,3,4,5), right = TRUE)
-rentals <- mutate(rentals,AMI_CAT)
+# Cut Household Income Into AMI Buckets
+rentals$AMI_CAT <- cut(rentals$HINCP, breaks = c(0,ami30,ami50,ami80,ami120,10000000), labels = c(1,2,3,4,5), right = TRUE)
 
 # Summary Statistics
 tapply(rentals$WGTP, list(rentals$AMI_CAT), sum)
@@ -67,28 +68,30 @@ prop.table(tapply(rentals$WGTP, list(rentals$AMI_CAT), sum))      # <30% AMI is 
 
 # Standard Errors
 pt.est <- sum(rentals$WGTP*(ifelse(rentals$AMI_CAT == 1,1,0)))    # Point Estimate:           22,822 <30% AMI renter households
-rep.ests <- sapply(wrep.names, function(n) sum(rentals[[n]]*(ifelse(rentals$AMI_CAT == 1,1,0))))
-se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Errors:           1,685 renter households
+rep.ests <- sapply(wrep.names, function(n) 
+  sum(rentals[[n]]*(ifelse(rentals$AMI_CAT == 1,1,0))))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           1,685 renter households
 ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [20,059 -- 25,585]
 
 #--------------------------------------
-# Household Income Quintiles
+# Household Income Quintiles: [1= 0-20%, 2= 20-40%, 3= 40-60%, 4= 60-80%, 5=80-100%]
 #--------------------------------------
+# Cut Household Income Into Income Quintiles
 with(rentals, Hmisc::wtd.quantile(HINCP, probs = c(0.2,0.4,0.6,0.8), weights=WGTP))
-INC_CAT <- cut(rentals$HINCP, breaks = c(-1,10000,20000,35000,61000,1000000), labels = c(1,2,3,4,5), right = TRUE)
-rentals <- mutate(rentals,INC_CAT)
+rentals$INC_CAT <- cut(rentals$HINCP, breaks = c(-1,10000,20000,35000,61000,1000000), labels = c(1,2,3,4,5), right = TRUE)
 
 # Summary Statistics
 tapply(rentals$WGTP, list(rentals$INC_CAT), sum)
 
 # Standard Errors
 pt.est <- sum(rentals$WGTP*(ifelse(rentals$INC_CAT == 1,1,0)))    # Point Estimate:           11,191 lowest quintile households
-rep.ests <- sapply(wrep.names, function(n) sum(rentals[[n]]*(ifelse(rentals$INC_CAT == 1,1,0))))
-se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Errors:           1,208 renter households
+rep.ests <- sapply(wrep.names, function(n) 
+  sum(rentals[[n]]*(ifelse(rentals$INC_CAT == 1,1,0))))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           1,208 renter households
 ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [9,210 -- 13,172]
 
 #--------------------------------------
-# Hispanic
+# Hispanic: [0= Not Hispanic, 1= Hispanic]
 #--------------------------------------
 # Create Hispanic Categories
 renters <- renters %>%
@@ -100,12 +103,13 @@ prop.table(tapply(renters$PWGTP, list(renters$HISP_CAT), sum))    # 21.6% of ren
 
 # Standard Errors
 pt.est <- sum(renters$PWGTP*renters$HISP_CAT)                     # Point Estimate:           24,832 renters
-rep.ests <- sapply(prep.names, function(n) sum(renters[[n]]*renters$HISP_CAT))
-se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Errors:           2,397 renters
+rep.ests <- sapply(prep.names, function(n) 
+  sum(renters[[n]]*renters$HISP_CAT))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           2,397 renters
 ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [20,901 -- 28,763]
 
 #--------------------------------------
-# Race
+# Race: [1=White,2=Black,3=Native American,6=Asian,10=Hispanic]
 #--------------------------------------
 # Create Race Categories
 renters <- renters %>%
@@ -117,12 +121,13 @@ prop.table(tapply(renters$PWGTP, list(renters$RACE_CAT), sum))    # 42.7% of ren
 
 # Standard Errors
 pt.est <- sum(renters$PWGTP*(ifelse(renters$RACE_CAT == 1,1,0)))  # Point Estimate:           31,947 white renters
-rep.ests <- sapply(prep.names, function(n) sum(renters[[n]]*(ifelse(renters$RACE_CAT == 1,1,0))))
-se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Errors:           2,305 renters
+rep.ests <- sapply(prep.names, function(n) 
+  sum(renters[[n]]*(ifelse(renters$RACE_CAT == 1,1,0))))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           2,305 renters
 ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [28,167 -- 35,727]
 
 #--------------------------------------
-# College Student
+# College Student: [0= Non-Student, 1= Student]
 #--------------------------------------
 # Create College Categories
 renters <- renters %>%
@@ -135,12 +140,13 @@ prop.table(tapply(renters$PWGTP, list(renters$COLLEGE), sum))     # 10.6% of ren
 
 # Standard Errors
 pt.est <- sum(renters$PWGTP*renters$COLLEGE)                      # Point Estimate:           12,144 renters
-rep.ests <- sapply(prep.names, function(n) sum(renters[[n]]*renters$COLLEGE))
-se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Errors:           1,568 renters
+rep.ests <- sapply(prep.names, function(n) 
+  sum(renters[[n]]*renters$COLLEGE))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           1,568 renters
 ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [9,573 -- 14,715]
 
 #--------------------------------------
-# Age Buckets
+# Age Buckets: [1= 0-17, 2= 18-39, 3= 40-64, 4= 65+]
 #--------------------------------------
 # Create Age Categories
 renters <- renters %>%
@@ -152,12 +158,13 @@ prop.table(tapply(renters$PWGTP, list(renters$AGE_CAT), sum))     # 26.8% of ren
 
 # Standard Errors
 pt.est <- sum(renters$PWGTP*(ifelse(renters$AGE_CAT == 1,1,0)))   # Point Estimate:           30,873 ages 0-17 renters
-rep.ests <- sapply(prep.names, function(n) sum(renters[[n]]*(ifelse(renters$AGE_CAT == 1,1,0))))
-se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Errors:           2,125 renters
+rep.ests <- sapply(prep.names, function(n) 
+  sum(renters[[n]]*(ifelse(renters$AGE_CAT == 1,1,0))))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           2,125 renters
 ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [27,389 -- 34,357]
 
 #--------------------------------------
-# Citizenship Status
+# Citizenship Status: [1= Citizen at Birth, 2= Naturalized Citizen, 3= Non-Citizen]
 #--------------------------------------
 # Create Citizenship Categories
 renters <- renters %>%
@@ -169,10 +176,11 @@ renters <- renters %>%
 tapply(renters$PWGTP, list(renters$CIT_CAT), sum)                 # 88.4% of renters were U.S. citizens at birth
 prop.table(tapply(renters$PWGTP, list(renters$CIT_CAT), sum))     # 8.0% are not U.S. citizens
 
-# Standard Errors
+# Standard Error
 pt.est <- sum(renters$PWGTP*(ifelse(renters$CIT_CAT == 3,1,0)))   # Point Estimate:           9,248 non-citizens
-rep.ests <- sapply(prep.names, function(n) sum(renters[[n]]*(ifelse(renters$CIT_CAT == 3,1,0))))
-se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Errors:           2,235 renters
+rep.ests <- sapply(prep.names, function(n) 
+  sum(renters[[n]]*(ifelse(renters$CIT_CAT == 3,1,0))))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))                   # Standard Error:           2,235 renters
 ci90 <- c(pt.est-(1.64*se), pt.est+(1.64*se))                     # 90% Confidence Interval:  [5,583 -- 12,913]
 
 
@@ -252,7 +260,7 @@ num_vacs <- filter(roc_hh, VACS==1) %>% tally(wt=WGTP)
 
 
 #===============================================================================
-# Framework for Computing Standard Errorss
+# General Framework for Computing Standard Errors
 #===============================================================================
 prep.names <- paste0('PWGTP', 1:80)
 wrep.names <- paste0('WGTP', 1:80)
@@ -300,6 +308,39 @@ se_ci90 <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))
 
 
 #===============================================================================
+# Standard Error Calculator
+#===============================================================================
+#--------------------------------------
+# User Specifications
+#--------------------------------------
+var <- "COLLEGE"                      # Select a variable (e.g. "SEX" or "AMI_CAT")
+val <- "1"                            # Select a value of the above variable (e.g. "1" or "2")
+wgt <- "PWGTP"                         # Select person-level or household-level weights ("PWGTP" or "WGTP")
+dta <- "renters_crowd"                # Select a dataset to use (e.g. "rentals_crowd" or "renters_xcrowd")
+
+#--------------------------------------
+# Generate Standard Errors
+#--------------------------------------
+# Generate point estimate
+se.est <- sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0))               # Point Estimate
+
+# Select appropriate replicate weights
+if (wgt == "WGTP") {
+  rep.names <- wrep.names
+} else if (wgt == "PWGTP") {
+  rep.names <- prep.names
+}
+
+# Compute standard errors
+se.rep.ests <- sapply(rep.names, function(n) 
+  sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+se <- sqrt((4/80) * sum((se.rep.ests - se.est)^2))                          # Standard Error
+se_ci90 <- c(se.est-(1.64*se), se.est+(1.64*se))                            # 90% Confidence Interval
+se_ci95 <- c(se.est-(1.96*se), se.est+(1.96*se))                            # 95% Confidence Interval
+
+
+
+#===============================================================================
 # Graphs and Charts
 #===============================================================================
 #--------------------------------------
@@ -314,3 +355,9 @@ ggplot(roc_hh, aes(x=BDSP, weight = WGTP)) + geom_histogram() +
 ggplot(roc_hh, aes(x=ACR, weight = WGTP)) + geom_histogram() + 
   stat_bin(binwidth=1, geom="text", aes(label=..count..), vjust=-1.0)  # Lot size (single-family homes)
 
+
+
+#===============================================================================
+# Export to .CSV
+#===============================================================================
+write.csv(rentals, file = "./rentals.csv")
