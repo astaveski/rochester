@@ -21,7 +21,7 @@ pums <- 5             # Which PUMS dataset should be used?
 # Select standards for overcrowding
 #--------------------------------------
 bdrm  <- 2            # Options: 2 / 1.75 / 1.5 people per bedroom
-rm    <- 1.5          # Options: 2 / 1.5 / 1 people per room
+rm    <- 1            # Options: 1.5 / 1 / 0.5 people per room
 
 #--------------------------------------
 # Select AMI number for analysis
@@ -89,8 +89,9 @@ prop.table(tapply(rentals$WGTP, list(rentals$AMI_CAT), sum))      # <30% AMI is 
 # Household Income Quintiles: [1= 0-20%, 2= 20-40%, 3= 40-60%, 4= 60-80%, 5=80-100%]
 #--------------------------------------
 # Cut Real Household Income Into Income Quintiles
-with(rentals, Hmisc::wtd.quantile(RHINCP, probs = c(0.2,0.4,0.6,0.8), weights=WGTP))
-rentals$INC_CAT <- cut(rentals$RHINCP, breaks = c(-1,10000,20000,35000,61000,1500000), labels = c(1,2,3,4,5), right = TRUE)
+quintiles <- with(rentals, Hmisc::wtd.quantile(RHINCP, probs = c(0.2,0.4,0.6,0.8), weights=WGTP))
+quintiles <- c(0, as.numeric(quintiles), 1500000)
+rentals$INC_CAT <- cut(rentals$RHINCP, breaks = quintiles, labels = c(1,2,3,4,5), right = TRUE)
 
 # Summary Statistics
 tapply(rentals$WGTP, list(rentals$INC_CAT), sum)
@@ -153,6 +154,19 @@ renters <- renters %>%
 tapply(renters$PWGTP, list(renters$CIT_CAT), sum)                 # 91.9% of renters were U.S. citizens at birth
 prop.table(tapply(renters$PWGTP, list(renters$CIT_CAT), sum))     # 5.3% are not U.S. citizens
 
+#--------------------------------------
+# Household Type: [1= Married Couple, 2= Unmarried Couple, 3= Family Household, 4= Non-Family & Non-Partner]
+#--------------------------------------
+rentals <- rentals %>%
+  mutate(HHT_CAT = ifelse(HHT==1,1,0)) %>%
+  mutate(HHT_CAT = ifelse(HHT==2 | HHT==3,3,HHT_CAT)) %>%
+  mutate(HHT_CAT = ifelse(HHT>3,4,HHT_CAT)) %>%
+  mutate(HHT_CAT = ifelse(PARTNER>0,2,HHT_CAT))
+
+# Summary Statistics                                             # 50.8% of renter households are non-family and non-partner households
+tapply(rentals$WGTP, list(rentals$HHT_CAT), sum)                 # 10.0% of renter households are married couple households
+prop.table(tapply(rentals$WGTP, list(rentals$HHT_CAT), sum))     # 10.2% of renter households are unmarried partner households
+
 
 
 #===============================================================================
@@ -165,6 +179,7 @@ prop.table(tapply(renters$PWGTP, list(renters$CIT_CAT), sum))     # 5.3% are not
 x <- ifelse(rentals$NP == 1, 0, 1)              # Identify 1-person households
 
 rentals <- rentals %>%
+  mutate(RENTAL = 1) %>%
   mutate(NP_adj = NP*x) %>%                     # Allows 1-person households to live in studio apartments
   mutate(BEDR2 = ceiling(NP_adj/2)) %>%         # Max 2 People Per Bedroom
   mutate(BEDR1.75 = ceiling(NP_adj/1.75)) %>%   # Max 1.75 People Per Bedroom
@@ -183,7 +198,7 @@ rentals <- rentals %>%
 
 # Count crowded rental households
 rentals %>%
-  summarise(all = sum(WGTP), crowd = sum(WGTP*FLAG), crowd_pct = crowd/all, crowd2 = sum(WGTP*FLAG2), crowd2_pct = (crowd2/all))
+  summarise(all = sum(WGTP), crowd = sum(WGTP*FLAG), crowd_pct = crowd/all, vcrowd = sum(WGTP*FLAG2), vcrowd_pct = (vcrowd/all))
 
 # Standard error of crowded rentals
 pt.est <- sum(rentals$WGTP*rentals$FLAG)                          # Point Estimate:           1,501 rental households are crowded
@@ -218,11 +233,11 @@ rentals <- rentals %>%
 # Identify crowded rentals
 diff_rm <- paste0("RDIFF", toString(rm))
 rentals <- rentals %>%
-  mutate(RFLAG = ifelse(get(diff_rm) < 0, 1, 0), RFLAG2 = ifelse(get(diff_rm) < -1, 1, 0))
+  mutate(RFLAG = ifelse(get(diff_rm) < 0, 1, 0), RFLAG2 = ifelse(RDIFF1.5 < 0, 1, 0))
 
 # Count crowded rental households
 rentals %>%
-  summarise(all = sum(WGTP), crowd = sum(WGTP*RFLAG), crowd_pct = crowd/all, crowd2 = sum(WGTP*RFLAG2), crowd2_pct = (crowd2/all))
+  summarise(all = sum(WGTP), crowd = sum(WGTP*RFLAG), crowd_pct = crowd/all, vcrowd = sum(WGTP*RFLAG2), vcrowd_pct = (vcrowd/all))
 
 # Standard error of crowded rentals
 pt.est <- sum(rentals$WGTP*rentals$RFLAG)                         # Point Estimate:            485 rental households are crowded
@@ -248,8 +263,8 @@ rentals_rxcrowd <- rentals %>%
 # Bedroom Standard
 #--------------------------------------
 # Match crowded households with specific individuals
-renters_crowd <- merge(rentals_crowd,renters, by="SERIALNO", suffixes = c(".hh", ".p"))
-renters_xcrowd <- merge(rentals_xcrowd,renters, by="SERIALNO", suffixes = c(".hh", ".p"))
+renters_crowd <- merge(rentals_crowd,renters, by="SERIALNO", all.x = TRUE, suffixes = c(".hh", ".p"))
+renters_xcrowd <- merge(rentals_xcrowd,renters, by="SERIALNO", all.x = TRUE, suffixes = c(".hh", ".p"))
 
 # Count crowded individuals
 renters_crowd %>%
@@ -316,6 +331,8 @@ prop <- (pt.est1/pt.est2)                                         # Point Estima
 se_prop <- (1/pt.est2) * sqrt(se1^2 - prop^2*se2^2 )              # Standard Error:           0.44 percentage points
 se_ci90 <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))            # 90% Confidence Interval:  [0.9% -- 2.3%]
 se_ci95 <- c(prop-(1.96*se_prop), prop+(1.96*se_prop))            # 90% Confidence Interval:  [0.7% -- 2.4%]
+
+renters <- merge(rentals,renters, by="SERIALNO", all.x = TRUE, suffixes = c(".hh", ".p"))
 
 rm(pt.est1, rep.ests, se1, ci90, ci95, pt.est2, se2, prop, se_prop, se_ci90, se_ci95)
 
@@ -467,44 +484,21 @@ tapply(renters_xcrowd$PWGTP, list(renters_xcrowd$NP.hh), sum)
 prop.table(tapply(renters_xcrowd$PWGTP, list(renters_xcrowd$NP.hh), sum))
 
 #-------------------------------------------------------------------------------
-# Family Relationships: [HHT: 1 = Married | PARTNER: 1-4 = Partner Household]
+# Family Relationships: [HHT_CAT: 1 = Married, 2 = Unmarried Partner, 3 = Other Family, 4 = Non-Family, Non-Partner]
 #-------------------------------------------------------------------------------
 # Crowded (Household-Level)
-tapply(rentals_crowd$WGTP, list(rentals_crowd$NP, rentals_crowd$HHT), sum)        # 238 2-person married households are crowded
-tapply(rentals_crowd$WGTP, list(rentals_crowd$NP, rentals_crowd$PARTNER), sum)    # 318 2-person partner households are crowded
+tapply(rentals_crowd$WGTP, list(rentals_crowd$HHT_CAT), sum)
+tapply(rentals_crowd$WGTP, list(rentals_crowd$NP, rentals_crowd$HHT_CAT), sum)      # 94 2-person married households are crowded
 
 # Uncrowded (Household-Level)
-tapply(rentals_xcrowd$WGTP, list(rentals_xcrowd$NP, rentals_xcrowd$HHT), sum)     # 2,230 2-person married households are uncrowded
-tapply(rentals_xcrowd$WGTP, list(rentals_xcrowd$NP, rentals_xcrowd$PARTNER), sum) # 2,512 2-person partner households are uncrowded
+tapply(rentals_xcrowd$WGTP, list(rentals_xcrowd$HHT_CAT), sum)
+tapply(rentals_xcrowd$WGTP, list(rentals_xcrowd$NP, rentals_xcrowd$HHT_CAT), sum)   # 2,482 2-person married households are uncrowded
 
 # Crowded (Person-Level)
-tapply(renters_crowd$PWGTP, list(renters_crowd$HHT.hh), sum)        # 238 2-person married households are crowded
-tapply(renters_crowd$PWGTP, list(renters_crowd$PARTNER.hh), sum)    # 318 2-person partner households are crowded
+tapply(renters_crowd$PWGTP, list(renters_crowd$HHT_CAT), sum)                       # 120 non-family, non-partner households are crowded
 
 # Uncrowded (Person-Level)
-tapply(renters_xcrowd$PWGTP, list(renters_xcrowd$HHT.hh), sum)     # 2,230 2-person married households are uncrowded
-tapply(renters_xcrowd$PWGTP, list(renters_xcrowd$PARTNER.hh), sum) # 2,512 2-person partner households are uncrowded
-
-# 2-Person Households
-rentals_crowd %>%
-  filter(NP == 2) %>%
-  filter(HHT == 1 | PARTNER > 0) %>%
-  summarise(count = sum(WGTP))                                    # Count of crowded 2-person married households + partner households 
-
-rentals_crowd %>%
-  filter(NP == 2) %>%
-  filter(HHT != 1 & PARTNER <= 0) %>%
-  summarise(count = sum(WGTP))                                    # Count of crowded 2-person not married households + not partner households
-  
-rentals_xcrowd %>%
-  filter(NP == 2) %>%
-  filter(HHT == 1 | PARTNER > 0) %>%
-  summarise(count = sum(WGTP))                                    # Count of uncrowded 2-person married households + partner households
-
-rentals_xcrowd %>%
-  filter(NP == 2) %>%
-  filter(HHT != 1 & PARTNER <= 0) %>%
-  summarise(count = sum(WGTP))                                    # Count of uncrowded 2-person not married households + not partner households
+tapply(renters_xcrowd$PWGTP, list(renters_xcrowd$HHT_CAT), sum)                     # 32,930 non-family, non-partner households are uncrowded
 
 
 
@@ -514,30 +508,56 @@ rentals_xcrowd %>%
 #--------------------------------------
 # User Specifications
 #--------------------------------------
-var <- "COLLEGE"                      # Select a variable (e.g. "SEX" or "AMI_CAT")
-val <- "1"                            # Select a value of the above variable (e.g. "1" or "2")
-wgt <- "PWGTP"                         # Select person-level or household-level weights ("PWGTP" or "WGTP")
-dta <- "renters_crowd"                # Select a dataset to use (e.g. "rentals_crowd" or "renters_xcrowd")
+var <- "HUPAC.hh"                    # Select a variable (e.g. "SEX" or "AMI_CAT")
+cat <- "4"                          # How many categories of this variable are there? (e.g. "2" or "4")
+wgt <- "PWGTP"                      # Select person-level or household-level weights ("PWGTP" or "WGTP")
+dta <- "renters_crowd"              # Select a dataset to use (e.g. "rentals_crowd" or "renters_xcrowd")
 
 #--------------------------------------
 # Generate Standard Errors
 #--------------------------------------
-# Generate point estimate
-se.est <- sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0))               # Point Estimate
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
 
-# Select appropriate replicate weights
-if (wgt == "WGTP") {
-  rep.names <- wrep.names
-} else if (wgt == "PWGTP") {
-  rep.names <- prep.names
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
 }
 
-# Compute standard errors
-se.rep.ests <- sapply(rep.names, function(n) 
-  sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
-se <- sqrt((4/80) * sum((se.rep.ests - se.est)^2))                          # Standard Error
-se_ci90 <- c(se.est-(1.64*se), se.est+(1.64*se))                            # 90% Confidence Interval
-se_ci95 <- c(se.est-(1.96*se), se.est+(1.96*se))                            # 95% Confidence Interval
+#--------------------------------------
+# Generate Table
+#--------------------------------------
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
 
 
 
