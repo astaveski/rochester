@@ -1,6 +1,6 @@
 # ===============================================================================
 # * FILE: pums_import.R
-# * PURPOSE: Import PUMS data from 2014-2018 and begin data analysis
+# * PURPOSE: Import PUMS data and create framework for data analysis
 # * AUTHORS: Adam Staveski
 # * DATE CREATED: June 4, 2020
 # * DATE LAST MODIFIED: July 2, 2020
@@ -18,7 +18,6 @@ options(scipen=999)
 #--------------------------------------
 pums <- 5             # Which PUMS dataset should be used?
                       # Options: 1 / 5 --> 1-year PUMS / 5-year PUMS
-
 
 #--------------------------------------
 # Select AMI Standard
@@ -339,7 +338,7 @@ se_ci90 <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))
 
 
 #===============================================================================
-# Standard Error Calculator
+# Standard Error Calculator -- One Variable
 #===============================================================================
 #--------------------------------------
 # User Specifications
@@ -368,6 +367,68 @@ se.rep.ests <- sapply(rep.names, function(n)
 se <- sqrt((4/80) * sum((se.rep.ests - se.est)^2))                          # Standard Error
 se_ci90 <- c(se.est-(1.64*se), se.est+(1.64*se))                            # 90% Confidence Interval
 se_ci95 <- c(se.est-(1.96*se), se.est+(1.96*se))                            # 95% Confidence Interval
+
+row_names <- var
+col_names <- c("Point Estimate", "Standard Error", "90% CI", "95% CI")
+se_table <- matrix(c(se.est, se, se_ci90, se_ci95), nrow = 1, ncol = 4, dimnames = list(row_names, col_names))
+
+
+
+#===============================================================================
+# Standard Error Calculator -- Loop
+#===============================================================================
+#--------------------------------------
+# User Specifications
+#--------------------------------------
+var <- "HHT_CAT"                      # Select a variable (e.g. "SEX" or "AMI_CAT")
+cat <- "4"                            # How many categories of this variable are there? (e.g. "2" or "4")
+wgt <- "WGTP"                         # Select person-level or household-level weights ("PWGTP" or "WGTP")
+dta <- "rentals_crowd"                # Select a dataset to use (e.g. "rentals_crowd" or "renters_xcrowd")
+
+#--------------------------------------
+# Generate Standard Errors
+#--------------------------------------
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Copmute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+#--------------------------------------
+# Generate Table
+#--------------------------------------
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
 
 
 
