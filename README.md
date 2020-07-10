@@ -23,7 +23,10 @@ By Adam Staveski and Andrea Ringer
    * How to construct weighted means and medians
    * How to construct weighted proportions
    * How to create histograms with weighted data
-* Includes standard error calculator that computes standard errors of counts and proportions
+* Includes standard error calculator that does the following:
+   * Computes standard errors of counts 
+   * Computes standard errors of proportions
+   * Loops over variables to compute standard errors of all categories
 
 ## right_sized.R
 Analyzes whether Rochester's housing stock is "right-sized" for the types of households living in the City. This code does the following:
