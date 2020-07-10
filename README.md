@@ -26,7 +26,7 @@ By Adam Staveski and Andrea Ringer
 * Includes standard error calculator that does the following:
    * Computes standard errors of counts 
    * Computes standard errors of proportions
-   * Loops over variables to compute standard errors of all categories
+   * Computes standard errors for all levels of a variable
 
 ## right_sized.R
 Analyzes whether Rochester's housing stock is "right-sized" for the types of households living in the City. This code does the following:
