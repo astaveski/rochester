@@ -29,6 +29,7 @@ By Adam Staveski and Andrea Ringer
    * Computes standard errors for all levels of a variable
 
 ## right_sized.R
+### Overview
 Analyzes whether Rochester's housing stock is "right-sized" for the types of households living in the City. This code does the following:
 * Imports and prepares 1-year / 5-year PUMS data in the style of pums_import.R
 * Conducts right-size analysis using person-level and household-level data
@@ -57,6 +58,7 @@ This file examines the demographics of individuals living in overcrowded househo
 * Occupation
 
 ## gap_analysis.R
+### Overview
 This file combines aspects of the affordability analysis and the right-sized analysis to estimate the "right-sized affordable housing gap" in Rochester. This code does the following:
 * Imports and prepares 1-year / 5-year PUMS household data
 * Analyzes the characteristics of Rochester's stock of vacant units
