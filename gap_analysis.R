@@ -4,7 +4,7 @@
 # *          conditions and "perfect sorting" conditions.
 # * AUTHORS: Adam Staveski
 # * DATE CREATED: June 12, 2020
-# * DATE LAST MODIFIED: July 2, 2020
+# * DATE LAST MODIFIED: July 10, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
@@ -238,8 +238,8 @@ rentals <- rentals %>%
 #--------------------------------------
 # [1 = <30% AMI | 2 = 30-50% AMI | 3 = 50-80% AMI | 4 = 80-120% AMI | 5 = >120% AMI]
 rentals <- rentals %>%
-  mutate(CAT_MIN_AMI = cut(MIN_AMI, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE)) %>%
-  mutate(CAT_MIN_AMI_ROC = cut(MIN_AMI_ROC, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE))
+  mutate(CAT_AFFORD = cut(MIN_AMI, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE)) %>%
+  mutate(CAT_AFFORD_ROC = cut(MIN_AMI_ROC, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE))
 
 
 
@@ -260,8 +260,8 @@ rentals <- rentals %>%
 # Group Income Cutoffs Into Buckets
 #--------------------------------------
 rentals <- rentals %>%
-  mutate(CAT_AMI_HH = cut(AMI_HH, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE)) %>%
-  mutate(CAT_AMI_HH_ROC = cut(AMI_HH_ROC, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE))
+  mutate(CAT_AMI_PCT = cut(AMI_HH, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE)) %>%
+  mutate(CAT_AMI_PCT_ROC = cut(AMI_HH_ROC, breaks = c(-1, 30, 50, 80, 120, 10000), labels = c(1,2,3,4,5), right = TRUE))
 
 #-------------------------------------------------------------------------------
 # Summary Statistics: Affordability at Different Income Thresholds
@@ -270,39 +270,98 @@ rentals <- rentals %>%
 # Using Actual AMI of $74,000
 #--------------------------------------
 # How many units are affordable at each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI), sum)                          # 17.2% of units are affordable to 30% AMI
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI), sum))              # 62.4% of units are affordable to 50% AMI 
+tapply(rentals$WGTP, list(rentals$CAT_AFFORD), sum)                          # 17.2% of units are affordable to 30% AMI
+prop.table(tapply(rentals$WGTP, list(rentals$CAT_AFFORD), sum))              # 62.4% of units are affordable to 50% AMI 
 
 # Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_MIN_AMI), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_MIN_AMI), sum, default = 0))
+tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_AFFORD), sum)
+prop.table(tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_AFFORD), sum, default = 0))
 
 # How many households encompass each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_AMI_HH), sum)                           # 44.8% of households are 30% AMI or less
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH), sum))               # 66.2% of households are 50% AMI or less
+tapply(rentals$WGTP, list(rentals$CAT_AMI_PCT), sum)                           # 44.8% of households are 30% AMI or less
+prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_PCT), sum))               # 66.2% of households are 50% AMI or less
 
 # Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_HH), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_HH), sum, default = 0))
+tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_PCT), sum)
+prop.table(tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_PCT), sum, default = 0))
 
 #--------------------------------------
-# Using Rochester AMI of $33,872
+# Using Rochester AMI of $33,872 / $35,458
 #--------------------------------------
 # How many units are affordable at each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_ROC), sum)                       # 3.8% of units are affordable to 30% AMI
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_MIN_AMI_ROC), sum))           # 9.4% of units are affordable to 50% AMI 
+tapply(rentals$WGTP, list(rentals$CAT_AFFORD_ROC), sum)                       # 3.8% of units are affordable to 30% AMI
+prop.table(tapply(rentals$WGTP, list(rentals$CAT_AFFORD_ROC), sum))           # 9.4% of units are affordable to 50% AMI 
 
 # Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_MIN_AMI_ROC), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_MIN_AMI_ROC), sum, default = 0))
+tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_AFFORD_ROC), sum)
+prop.table(tapply(rentals$WGTP, list(rentals$BDSP, rentals$CAT_AFFORD_ROC), sum, default = 0))
 
 # How many households encompass each AMI threshold?
-tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_ROC), sum)                        # 17.7% of households are 30% AMI or less
-prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_HH_ROC), sum))            # 34.4% of households are 50% AMI or less
+tapply(rentals$WGTP, list(rentals$CAT_AMI_PCT_ROC), sum)                        # 17.7% of households are 30% AMI or less
+prop.table(tapply(rentals$WGTP, list(rentals$CAT_AMI_PCT_ROC), sum))            # 34.4% of households are 50% AMI or less
 
 # Cross-tabulations by number of bedrooms
-tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_HH_ROC), sum)
-prop.table(tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_HH_ROC), sum, default = 0))
+tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_PCT_ROC), sum)
+prop.table(tapply(rentals$WGTP, list(rentals$BEDR2, rentals$CAT_AMI_PCT_ROC), sum, default = 0))
+
+#===============================================================================
+# Standard Error Calculator -- Loop
+#===============================================================================
+rentals_bed <- rentals %>%
+  filter(BDSP >=5)
+#--------------------------------------
+# User Specifications
+#--------------------------------------
+var <- "CAT_AFFORD"                      # Select a variable (e.g. "SEX" or "AMI_CAT")
+cat <- "5"                            # How many categories of this variable are there? (e.g. "2" or "4")
+wgt <- "WGTP"                         # Select person-level or household-level weights ("PWGTP" or "WGTP")
+dta <- "rentals_bed"                # Select a dataset to use (e.g. "rentals_crowd" or "renters_xcrowd")
+
+#--------------------------------------
+# Generate Standard Errors
+#--------------------------------------
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Copmute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+#--------------------------------------
+# Generate Table
+#--------------------------------------
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
 
 
 
@@ -348,15 +407,24 @@ flags %>%
 rentals <- rentals %>%
   mutate(FLAG = ifelse(FLAG_SIZE == 1 | FLAG_AFF == 1, 1, 0))
 
-# Generate point estimate
-se.est <- sum(ifelse(rentals$FLAG==1,rentals$WGTP,0))                   # Point Estimate: 30,671 households are not RSA
+renters <- merge(rentals,roc_p, by="SERIALNO", all.x = TRUE, suffixes = c(".hh", ".p"))
 
 # Compute standard errors
+pt.est1 <- sum(ifelse(rentals$FLAG==1,rentals$WGTP,0))                    # Point Estimate:           30,671 households are not RSA
 se.rep.ests <- sapply(wrep.names, function(n) 
   sum(ifelse(rentals$FLAG==1,rentals[[n]],0)))
-se <- sqrt((4/80) * sum((se.rep.ests - se.est)^2))                      # Standard Error: 731 households
-se_ci90 <- c(se.est-(1.64*se), se.est+(1.64*se))                        # 90% Confidence Interval: [29,472 -- 31,870]
-se_ci95 <- c(se.est-(1.96*se), se.est+(1.96*se))                        # 95% Confidence Interval: [29,238 -- 32,104]
+se1 <- sqrt((4/80) * sum((se.rep.ests - pt.est1)^2))                      # Standard Error:           731 households
+se1_ci95 <- c(pt.est1-(1.96*se1), pt.est1+(1.96*se1))                     # 95% Confidence Interval: [29,238 -- 32,104]
+
+pt.est2 <- sum(rentals$WGTP)                                              # Point Estimate:           52,366 households
+se.rep.ests <- sapply(wrep.names, function(n) 
+  sum(rentals[[n]]))
+se2 <- sqrt((4/80) * sum((se.rep.ests - pt.est2)^2))                      # Standard Error:           771 households
+se2_ci95 <- c(pt.est2-(1.96*se2), pt.est2+(1.96*se2))                     # 95% Confidence Interval: [50,854 -- 53,878]
+
+prop <- (pt.est1/pt.est2)                                                 # Point Estimate:           58.6% of households are not RSA
+prop_se <- (1/pt.est2) * sqrt(se1^2 - (prop^2*se2^2))                     # Standard Error:           1.1% of households
+prop_ci95 <- c(prop-(1.96*prop_se), prop+(1.96*prop_se))                    # 95% Confidence Interval:  [56.4% -- 60.7%]
 
 
 
@@ -521,22 +589,34 @@ sort_unit %>%
   summarise(rentals = sum(one), xGAP = sum(OCCUPIED), GAP = sum(one)-sum(OCCUPIED), GAP_pct = 1-(sum(OCCUPIED)/sum(one)))
 
 #--------------------------------------
-# Household Characteristics
+# Income Characteristics of Gap Households
 #--------------------------------------
-sort_hh %>%
-  filter(RENTED == 0) %>%                                                              # The max income for GAP households is $26,442
-  summarise(max_inc = max(RHINCP), avg_inc = mean(RHINCP), med_inc = median(RHINCP))   # The median income for GAP households is $10,188
+# Gap Households by Income Tier
+sort_hh <- sort_hh %>%
+  mutate(AMI_CAT = ifelse(RHINCP <= 0.3*ami,1,0)) %>%
+  mutate(AMI_CAT = ifelse(RHINCP > 0.3*ami & RHINCP <= 0.5*ami,2,AMI_CAT)) %>%
+  mutate(AMI_CAT = ifelse(RHINCP > 0.5*ami & RHINCP <= 0.8*ami,3,AMI_CAT)) %>%
+  mutate(AMI_CAT = ifelse(RHINCP > 0.8*ami & RHINCP <= 1.2*ami,4,AMI_CAT)) %>%
+  mutate(AMI_CAT = ifelse(RHINCP > 1.2*ami,5,AMI_CAT))
+
+table(sort_hh$NP, ifelse(sort_hh$RENTED==1,sort_hh$AMI_CAT,""))
+
+# Maximum Income of Gap Households
+gap_max_inc <- max(sort_hh$RHINCP*ifelse(sort_hh$RENTED==0,1,0))                # The max income for GAP households is $26,442
 
 rentals %>%
-  filter(RHINCP <= 26442) %>%                     # In the entire rental universe, 27,058 households make <$26,442
-  summarise(num = sum(WGTP))                      # Of these households, 14,839 (54.8%) are in the gap
+  filter(RHINCP <= gap_max_inc) %>%                                             # In the entire rental universe, 27,058 households make <$26,442
+  summarise(num = sum(WGTP))                                                    # Of these households, 14,839 (54.8%) are in the gap
+
+# Median Income of Gap Households
+gap_med_inc <- median(sort_hh$RHINCP*ifelse(sort_hh$RENTED==0,1,NA), na.rm = TRUE)  # The median income for GAP households is $10,188
 
 rentals %>%
-  filter(RHINCP <= 10188) %>%                     # In the entire rental universe, 9,465 households make <= $10,188
-  summarise(num = sum(WGTP))                      # Of these households, 7,420 (78.4%) are in the gap
+  filter(RHINCP <= gap_med_inc) %>%                                             # In the entire rental universe, 9,465 households make <= $10,188
+  summarise(num = sum(WGTP))                                                    # Of these households, 7,420 (78.4%) are in the gap
 
 sort_hh %>%
-  filter(RENTED == 0 & RHINCP <= 10188) %>%
+  filter(RENTED == 0 & RHINCP <= gap_med_inc) %>%
   summarise(gap_poor = sum(one))
 
 
@@ -544,6 +624,8 @@ sort_hh %>%
 #===============================================================================
 # Standard Error of the Right-Sized Affordable Housing Gap
 #===============================================================================
+# WARNING: This section of code takes ~2 hours to run
+
 gap_count <- sum(ifelse(sort_hh$RENTED==0,1,0))
 xgap_count <- sum(sort_hh$RENTED)
 rent_count <- nrow(sort_hh)
@@ -645,10 +727,10 @@ rent_ci90 <- c(rent_est-(1.64*rent_se), rent_est+(1.64*rent_se))            # 90
 rent_ci95 <- c(rent_est-(1.96*rent_se), rent_est+(1.96*rent_se))            # 95% Confidence Interval: [50,854 -- 53,878]
 
 # Proportion of Renters in Gap
-prop <- (gap_est/rent_est)                                                  # Point Estimate:            28.3%
-prop_se <- (1/rent_est) * sqrt(gap_se^2 - (prop^2*rent_se^2))               # Standard Error:             1.1%
-prop_ci90 <- c(prop-(1.64*prop_se), prop+(1.64*prop_se))                    # 90% Confidence Interval:  [26.5% -- 30.2%]
-prop_ci95 <- c(prop-(1.96*prop_se), prop+(1.96*prop_se))                    # 95% Confidence Interval:  [26.1% -- 30.6%]
+prop <- (gap_est/rent_est)                                                  # Point Estimate:           28.3%
+prop_se <- (1/rent_est) * sqrt(gap_se^2 - (prop^2*rent_se^2))               # Standard Error:            1.1%
+prop_ci90 <- c(prop-(1.64*prop_se), prop+(1.64*prop_se))                    # 90% Confidence Interval: [26.5% -- 30.2%]
+prop_ci95 <- c(prop-(1.96*prop_se), prop+(1.96*prop_se))                    # 95% Confidence Interval: [26.1% -- 30.6%]
 
 
 
