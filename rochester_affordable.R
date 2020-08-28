@@ -3,7 +3,7 @@
 # * PURPOSE: Import and Analyze PUMS data from 2018
 # * AUTHORS: Andrea Ringer
 # * DATE CREATED: June 9, 2020
-# * DATE LAST MODIFIED: July 2, 2020
+# * DATE LAST MODIFIED: July 8, 2020
 # ===============================================================================
 library(readr)
 library(tidyverse)
@@ -31,8 +31,8 @@ hh_monroe <- pums_hh
 # Clean Person and Household Data
 #-------------------------------------------------------------------------------
 # Separate year and ID number from SERIALNO
-all_roc$year=substr(as.character(p_roc$SERIALNO),1,4)
-all_roc$id=substr(as.character(p_roc$SERIALNO),5,25)
+all_roc$year=substr(as.character(all_roc$SERIALNO),1,4)
+all_roc$id=substr(as.character(all_roc$SERIALNO),5,25)
 
 hh_roc$year=substr(as.character(hh_roc$SERIALNO),1,4)
 hh_roc$id=substr(as.character(hh_roc$SERIALNO),5,25)
@@ -53,6 +53,16 @@ prop.table(tapply(hh_roc$WGTP, list(hh_roc$GRPIP_cat), sum))
     # 80-100% income:  5.2%
     # >100% income:    13.5%
 
+# Generate definition categories for rent burden
+hh_roc$GRPIP_cat_2 <- cut(hh_roc$GRPIP, breaks = c(0, 30, 50, 10000000), labels = c(1,2,3), right = TRUE)
+summary(hh_roc$GRPIP_cat_2)
+tapply(hh_roc$WGTP, list(hh_roc$GRPIP_cat_2), sum)
+prop.table(tapply(hh_roc$WGTP, list(hh_roc$GRPIP_cat_2), sum))
+
+# Create variables for standard error calculations
+prep.names <- paste0('PWGTP', 1:80)
+wrep.names <- paste0('WGTP', 1:80)
+
 # Create adjusted household income variable (using HINCP, ADJINC)
 hh_roc$ADJINC_1 <- hh_roc$ADJINC/1000000
 hh_roc$HINCP_adj <- hh_roc$HINCP*hh_roc$ADJINC_1
@@ -65,10 +75,20 @@ w_median_mon <- w.median(hh_monroe$HINCP_adj, hh_monroe$WGTP)
 # Generate Monroe County AMI categories
 hh_roc$ami_mon = hh_roc$HINCP_adj/w_median_mon
 hh_roc$ami_mon_cat <- cut(hh_roc$ami_mon, breaks = c(0, 0.3, 0.5, 0.8, 10000000), labels = c(1,2,3,4), right = TRUE)
-
 tapply(hh_roc$WGTP, list(hh_roc$ami_mon_cat), sum)
 prop.table(tapply(hh_roc$WGTP, list(hh_roc$ami_mon_cat), sum))
 
+# Rochester Metro Area (RMA) median income and AMI categories
+w_median_rma <- 74000
+hh_roc$ami_rma = hh_roc$HINCP_adj/w_median_rma
+hh_roc$ami_rma_cat <- cut(hh_roc$ami_rma, breaks = c(0, 0.3, 0.5, 0.8, 10000000), labels = c(1,2,3,4), right = TRUE)
+tapply(hh_roc$WGTP, list(hh_roc$ami_rma_cat), sum)
+prop.table(tapply(hh_roc$WGTP, list(hh_roc$ami_rma_cat), sum))
+
+# Generate length of time in rental unit (MV) amended category values (MV2)
+hh_roc$MV2 = ifelse(hh_roc$MV %in% 4:7, 4, hh_roc$MV)
+tapply(hh_roc$WGTP, list(hh_roc$MV2), sum)
+    # 1=12 mos or less; 2=13-23 mos; 3=2-4 years; 4=5+ years
 
 gross_rent_perc <- select(hh_roc, GRPIP, WGTP) %>% tally(wt=WGTP)
 
@@ -124,6 +144,39 @@ summary(rent_bur_30to50$GRPIP_cat)
 rent_bur_50to101 <- hh_roc %>%
   filter(GRPIP_cat %in% 3:6)    # >50% income on rent
 summary(rent_bur_50to101$GRPIP_cat)
+
+#-------------------------------------------------------------------------------
+# Rent Burden
+#-------------------------------------------------------------------------------
+tapply(hh_rental$WGTP, list(hh_rental$GRPIP_cat_2), sum)
+prop.table(tapply(hh_rental$WGTP, list(hh_rental$GRPIP_cat_2), sum))
+
+#--------------------------- Standard errors
+rep.names <- paste0('WGTP', 1:80)
+
+# All HHs
+all <- hh_rental %>% filter(GRPIP_cat_2 %in% 1:3)
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Non rent burdened HHs
+all <- hh_rental %>% filter(GRPIP_cat_2==1)
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Rent burdened HHs
+all <- hh_rental %>% filter(GRPIP_cat_2==2)
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Severely rent burdened HHs
+all <- hh_rental %>% filter(GRPIP_cat_2==3)
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
 
 #-------------------------------------------------------------------------------
 # FES: Family Type and Employment Status
@@ -733,7 +786,6 @@ tapply(rent_bur_50to101$WGTP, list(rent_bur_50to101$HHT), sum)
 prop.table(tapply(rent_bur_50to101$WGTP, list(rent_bur_50to101$HHT), sum))
 
 #------------------ STANDARD ERRORS - All Rental HHs ---------------------------
-rep.names <- paste0('WGTP', 1:80)
 
 # All Rental HHs
 all <- hh_rental %>% filter(HHT %in% 1:7)
@@ -824,6 +876,21 @@ prop <- (pt.est/pt.est_all)
 ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
 ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) # [0.155, 0.1830]                 
 
+# ------- Additional
+
+# Rental HHs: Any single-renter HH (male or female)
+x <- hh_rental %>% filter(HHT==4 | HHT==6)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.01142
+
+# Rental HHs: Non family, non single-renter HH
+x <- hh_rental %>% filter(HHT==5 | HHT==7)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00703
 
 #------------------ STANDARD ERRORS - Any rent-burdened HHs --------------------
 rep.names <- paste0('WGTP', 1:80)
@@ -917,6 +984,21 @@ prop <- (pt.est/pt.est_all)
 ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
 ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) # [0.0874, 0.1181]                 
 
+#----------- Additional
+
+# Any rent-burdened HHs: Any single-renter HH (male or female)
+x <- rent_bur %>% filter(HHT==4 | HHT==6)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.01142
+
+# Any rent-burdened HHs: Non family, non single-renter HH
+x <- rent_bur %>% filter(HHT==5 | HHT==7)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00703
 
 #------------------ STANDARD ERRORS - Non rent-burdened HHs --------------------
 rep.names <- paste0('WGTP', 1:80)
@@ -1010,6 +1092,21 @@ prop <- (pt.est/pt.est_all)
 ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
 ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) # [0.23, 0.288]                 
 
+#----------- Additional
+
+# Non rent-burdened HHs: Any single-renter HH (male or female)
+x <- rent_bur_no %>% filter(HHT==4 | HHT==6)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Non rent-burdened HHs: Non family, non single-renter HH
+x <- rent_bur_no %>% filter(HHT==5 | HHT==7)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
 
 #------------------ STANDARD ERRORS - Rent-burdened HHs ------------------------
 rep.names <- paste0('WGTP', 1:80)0
@@ -1103,6 +1200,21 @@ prop <- (pt.est/pt.est_all)
 ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
 ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) # [0.101, 0.163]                 
 
+#----------- Additional
+
+# Rent-burdened HHs: Any single-renter HH (male or female)
+x <- rent_bur_30to50 %>% filter(HHT==4 | HHT==6)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Rent-burdened HHs: Non family, non single-renter HH
+x <- rent_bur_30to50 %>% filter(HHT==5 | HHT==7)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
 
 #------------------ STANDARD ERRORS - Severely Rent-burdened HHs ---------------
 rep.names <- paste0('WGTP', 1:80)0
@@ -1196,6 +1308,22 @@ prop <- (pt.est/pt.est_all)
 ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
 ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) # [0.061, 0.010]                 
 
+#----------- Additional
+
+# Severely rent-burdened HHs: Any single-renter HH (male or female)
+x <- rent_bur_50to101 %>% filter(HHT==4 | HHT==6)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Severely rent-burdened HHs: Non family, non single-renter HH
+x <- rent_bur_50to101 %>% filter(HHT==5 | HHT==7)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2)) # SE=407.67
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
 
 #------------------------------------------------------------------------------
 # HHL: Household Language
@@ -1257,7 +1385,7 @@ tapply(rent_bur_30to50$WGTP, list(rent_bur_30to50$MV), sum)
 prop.table(tapply(rent_bur_30to50$WGTP, list(rent_bur_30to50$MV), sum))
 
 # Severely rent burdened households >50%
-tapply(rent_bur_50to101$WGTP, list(rent_bur_50to101$MV), sum)
+tapply(rent_bur_50to101$WGTP, list(rent_bur_50to101$MV2), sum)
 prop.table(tapply(rent_bur_50to101$WGTP, list(rent_bur_50to101$MV), sum))
 
 # Calculate average and standard error for length of time in rental unit
@@ -1265,20 +1393,499 @@ time_in_unit <- select(hh_roc, MV, WGTP) %>% tally(wt=WGTP)
 weighted.mean(all_roc$MV, all_roc$WGTP_HH, na.rm==TRUE) # 3.56 (mean between 2-4 years)
 w.median(all_roc$MV, all_roc$WGTP_HH) # 3 (median between 2-4 years)
 
+#------------------------- STANDARD ERRORS - All rental HHs ---------------------
+
+# User Specifications
+var <- "MV2"                    # Select a variable (e.g. "SEX" or "AMI_CAT")
+cat <- "4"                      # How many categories of this variable are there? (e.g. "2" or "4")
+wgt <- "WGTP"                   # Select person-level or household-level weights ("PWGTP" or "WGTP")
+dta <- "hh_rental"              # Select a dataset to use (e.g. "rentals_crowd" or "renters_xcrowd")
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All Rental HHs
+all <- hh_rental
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Rental HHs: Less than 12 mos
+x <- hh_rental %>% filter(MV2==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0106
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) # [0.267, 0.309]                 
+
+# Rental HHs: 13-23 mos
+x <- hh_rental %>% filter(MV2==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00762
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rental HHs: 2-4 years
+x <- hh_rental %>% filter(MV2==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00928
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rental HHs: 5+ years
+x <- hh_rental %>% filter(MV2==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0107
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
+
+#------------------------- STANDARD ERRORS - Any rent-burdened HHs -------------
+
+# User Specifications
+var <- "MV2"                    # Select a variable (e.g. "SEX" or "AMI_CAT")
+cat <- "4"                      # How many categories of this variable are there? (e.g. "2" or "4")
+wgt <- "WGTP"                   # Select person-level or household-level weights ("PWGTP" or "WGTP")
+dta <- "rent_bur"              # Select a dataset to use (e.g. "rentals_crowd" or "renters_xcrowd")
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Any rent-burdened HHs
+all <- rent_bur
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Any rent-burdened HHs: Less than 12 mos
+x <- rent_bur %>% filter(MV2==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0130
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Any rent-burdened HHs: 13-23 mos
+x <- rent_bur %>% filter(MV2==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Any rent-burdened HHs: 2-4 years
+x <- rent_bur %>% filter(MV2==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Any rent-burdened HHs: 5+ years
+x <- rent_bur %>% filter(MV2==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
+
+#------------------------- STANDARD ERRORS - Non rent-burdened HHs -------------
+
+# User Specifications
+var <- "MV2"                    # Select a variable (e.g. "SEX" or "AMI_CAT")
+cat <- "4"                      # How many categories of this variable are there? (e.g. "2" or "4")
+wgt <- "WGTP"                   # Select person-level or household-level weights ("PWGTP" or "WGTP")
+dta <- "rent_bur_no"            # Select a dataset to use (e.g. "rentals_crowd" or "renters_xcrowd")
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Non rent-burdened HHs
+all <- rent_bur_no 
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Non rent-burdened HHs: Less than 12 mos
+x <- rent_bur_no %>% filter(MV2==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Non rent-burdened HHs: 13-23 mos
+x <- rent_bur_no %>% filter(MV2==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Non rent-burdened HHs: 2-4 years
+x <- rent_bur_no %>% filter(MV2==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Non rent-burdened HHs: 5+ years
+x <- rent_bur_no %>% filter(MV2==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
+
+#------------------------- STANDARD ERRORS - Rent-burdened HHs -----------------
+
+# User Specifications
+var <- "MV2"                    
+cat <- "4"                      
+wgt <- "WGTP"                   
+dta <- "rent_bur_30to50"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Rent-burdened HHs
+all <- rent_bur_30to50 
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Rent-burdened HHs: Less than 12 mos
+x <- rent_bur_30to50 %>% filter(MV2==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rent-burdened HHs: 13-23 mos
+x <- rent_bur_30to50 %>% filter(MV2==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rent-burdened HHs: 2-4 years
+x <- rent_bur_30to50 %>% filter(MV2==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rent-burdened HHs: 5+ years
+x <- rent_bur_30to50 %>% filter(MV2==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
+
+#------------------------- STANDARD ERRORS - Severely rent-burdened HHs --------
+
+# User Specifications
+var <- "MV2"                    
+cat <- "4"                      
+wgt <- "WGTP"                   
+dta <- "rent_bur_50to101"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Severely rent-burdened HHs
+all <- rent_bur_50to101
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Severely rent-burdened HHs: Less than 12 mos
+x <- rent_bur_50to101 %>% filter(MV2==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Severely rent-burdened HHs: 13-23 mos
+x <- rent_bur_50to101 %>% filter(MV2==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Severely rent-burdened HHs: 2-4 years
+x <- rent_bur_50to101 %>% filter(MV2==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Severely rent-burdened HHs: 5+ years
+x <- rent_bur_50to101 %>% filter(MV2==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
 
 #------------------------------------------------------------------------------
 # MV: Length of Time in Unit by Income
 #------------------------------------------------------------------------------
 
-# Use AMI categories created previously (ami_mon_cat)
+# Use AMI categories created previously (ami_rma_cat)
 # 1=0-30%, 2=30-50%, 3=50-60%, 4=60-80%, 5=80-100%, 6=100-120%, 7=120%+
 
-d <- hh_rental %>% filter(ami_mon_cat %in% 1:4)
+d <- hh_rental %>% filter(ami_rma_cat %in% 1:4)
 
 #-------------------------- All Rental HHs
 z <- d
 w <- z$WGTP
-v <- z$ami_mon_cat
+v <- z$ami_rma_cat
 tapply(w, list(v), sum)
 prop.table(tapply(w, list(v), sum))
 weighted.mean(z$HINCP_adj, w) # $36,361.46
@@ -1296,7 +1903,7 @@ pumsd_hh %>% filter(!is.na(HINCP_adj)) %>%
 # ------------------------- HHs in unit 12 mos or less
 z <- d %>% filter(MV==1)
 w <- z$WGTP
-v <- z$ami_mon_cat
+v <- z$ami_rma_cat
 tapply(w, list(v), sum)
 prop.table(tapply(w, list(v), sum))
 weighted.mean(z$HINCP_adj, w) # $36,626.06
@@ -1314,7 +1921,7 @@ pumsd_hh %>% filter(!is.na(HINCP_adj)) %>%
 # -------------------------- HHs in unit 13-23 mos
 z <- d %>% filter(MV==2)
 w <- z$WGTP
-v <- z$ami_mon_cat
+v <- z$ami_rma_cat
 tapply(w, list(v), sum)
 prop.table(tapply(w, list(v), sum))
 weighted.mean(z$HINCP_adj, w) # $43,721.19
@@ -1332,7 +1939,7 @@ pumsd_hh %>% filter(!is.na(HINCP_adj)) %>%
 # -------------------------- HHs in unit 2-4 years
 z <- d %>% filter(MV==3)
 w <- z$WGTP
-v <- z$ami_mon_cat
+v <- z$ami_rma_cat
 tapply(w, list(v), sum)
 prop.table(tapply(w, list(v), sum))
 weighted.mean(z$HINCP_adj, w) # $35,487.76
@@ -1350,7 +1957,7 @@ pumsd_hh %>% filter(!is.na(HINCP_adj)) %>%
 # --------------------------- HHs in unit 5-9 years
 z <- d %>% filter(MV==4)
 w <- z$WGTP
-v <- z$ami_mon_cat
+v <- z$ami_rma_cat
 tapply(w, list(v), sum)
 prop.table(tapply(w, list(v), sum))
 weighted.mean(z$HINCP_adj, w) # $35,991.89
@@ -1365,10 +1972,29 @@ pumsd_hh <- z %>%
 pumsd_hh %>% filter(!is.na(HINCP_adj)) %>%
   summarise(survey_mean(HINCP_adj, na.rm = TRUE)) # mean=35992, se=1389
 
+# --------------------------- HHs in unit 5+ years
+z <- d %>% filter(MV %in% 4:7)
+w <- z$WGTP
+v <- z$ami_rma_cat
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
+weighted.mean(z$HINCP_adj, w) # $34,284.35
+var <- wtd.var(z$HINCP_adj, w)
+sd <- sqrt(var) # $49,874.26
+
+# use "survey" package to set survey design and specify replicate weights
+pumsd_hh <- z %>%
+  as_survey_rep(weights = WGTP, repweights = starts_with("WGTP"), combined_weights = TRUE)
+
+# calculate mean and std. error of HINCP_adj
+pumsd_hh %>% filter(!is.na(HINCP_adj)) %>%
+  summarise(survey_mean(HINCP_adj, na.rm = TRUE)) # mean=34284, se=812
+
+
 # ---------------------------- HHs in unit 10+ years
 z <- d %>% filter(MV %in% 5:7)
 w <- z$WGTP
-v <- z$ami_mon_cat
+v <- z$ami_rma_cat
 tapply(w, list(v), sum)
 prop.table(tapply(w, list(v), sum))
 weighted.mean(z$HINCP_adj, w) # $32,305.18
@@ -1384,6 +2010,430 @@ pumsd_hh <- z %>%
 pumsd_hh %>% filter(!is.na(HINCP_adj)) %>%
   summarise(survey_mean(HINCP_adj, na.rm = TRUE)) # mean=32035, se=901
 
+#------------------------- STANDARD ERRORS - All rental HHs ---------------------
+rent_ami <- hh_rental %>% filter(ami_rma_cat %in% 1:4)
+
+# User Specifications
+var <- "ami_rma_cat"                   
+cat <- "4"                      
+wgt <- "WGTP"                   
+dta <- "rent_ami"              
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All Rental HHs
+all <- rent_ami
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Rental HHs: <30% AMI
+x <- rent_ami %>% filter(ami_rma_cat==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0106
+
+# Rental HHs: 30-50% AMI
+x <- rent_ami %>% filter(ami_rma_cat==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00762
+
+# Rental HHs: 50-80% AMI
+x <- rent_ami %>% filter(ami_rma_cat==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00928
+
+# Rental HHs: >80% AMI
+x <- rent_ami %>% filter(ami_rma_cat==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0107
+
+#------------------------- STANDARD ERRORS - 12 mos or less ---------------------
+rent_ami_LT12 <- rent_ami %>% filter(MV==1)
+
+# User Specifications
+var <- "ami_rma_cat"                   
+cat <- "4"                      
+wgt <- "WGTP"                   
+dta <- "rent_ami_LT12"              
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All HHs
+all <- rent_ami_LT12
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# <30% AMI
+x <- rent_ami_LT12 %>% filter(ami_rma_cat==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0106
+
+# 30-50% AMI
+x <- rent_ami_LT12 %>% filter(ami_rma_cat==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00762
+
+# 50-80% AMI
+x <- rent_ami_LT12 %>% filter(ami_rma_cat==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00928
+
+# >80% AMI
+x <- rent_ami_LT12 %>% filter(ami_rma_cat==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0107
+
+#------------------------- STANDARD ERRORS - 13 to 23 mos ----------------------
+rent_ami_13to23 <- rent_ami %>% filter(MV==2)
+
+# User Specifications
+var <- "ami_rma_cat"                   
+cat <- "4"                      
+wgt <- "WGTP"                   
+dta <- "rent_ami_13to23"              
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All HHs
+all <- rent_ami_13to23
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# <30% AMI
+x <- rent_ami_13to23 %>% filter(ami_rma_cat==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0106
+
+# 30-50% AMI
+x <- rent_ami_13to23 %>% filter(ami_rma_cat==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00762
+
+# 50-80% AMI
+x <- rent_ami_13to23 %>% filter(ami_rma_cat==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00928
+
+# >80% AMI
+x <- rent_ami_13to23 %>% filter(ami_rma_cat==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0107
+
+#------------------------- STANDARD ERRORS - 2 to 4 years ----------------------
+rent_ami_2to4 <- rent_ami %>% filter(MV==3)
+
+# User Specifications
+var <- "ami_rma_cat"                   
+cat <- "4"                      
+wgt <- "WGTP"                   
+dta <- "rent_ami_2to4"              
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All HHs
+all <- rent_ami_2to4
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# <30% AMI
+x <- rent_ami_2to4 %>% filter(ami_rma_cat==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0106
+
+# 30-50% AMI
+x <- rent_ami_2to4 %>% filter(ami_rma_cat==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00762
+
+# 50-80% AMI
+x <- rent_ami_2to4 %>% filter(ami_rma_cat==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00928
+
+# >80% AMI
+x <- rent_ami_2to4 %>% filter(ami_rma_cat==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0107
+
+#------------------------- STANDARD ERRORS - 5+ years --------------------------
+rent_ami_MT5 <- rent_ami %>% filter(MV2==4)
+
+# User Specifications
+var <- "ami_rma_cat"                   
+cat <- "4"                      
+wgt <- "WGTP"                   
+dta <- "rent_ami_MT5"              
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All HHs
+all <- rent_ami_MT5
+pt.est_all <- sum(all$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# <30% AMI
+x <- rent_ami_MT5 %>% filter(ami_rma_cat==1)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0106
+
+# 30-50% AMI
+x <- rent_ami_MT5 %>% filter(ami_rma_cat==2)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00762
+
+# 50-80% AMI
+x <- rent_ami_MT5 %>% filter(ami_rma_cat==3)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.00928
+
+# >80% AMI
+x <- rent_ami_MT5 %>% filter(ami_rma_cat==4)
+pt.est <- sum(x$WGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 0.0107
 
 #------------------------------------------------------------------------------
 # MV: Length of Time in Rental Unit by Presence of Children (HUPAC)
@@ -1453,6 +2503,15 @@ all_roc$age_cat <- cut(all_roc$AGEP, breaks = c(0, 20, 30, 50, 70, 10000000), la
 
 # Generate categories for race in merged data
 all_roc$RACE = ifelse(all_roc$HISP == 01, all_roc$RAC1P, 10)
+all_roc$RACE2 = ifelse(all_roc$RACE %in% 3:9, 4, all_roc$RACE)
+all_roc$RACE2 = ifelse(all_roc$RACE==10, 3, all_roc$RACE2)
+tapply(all_roc$PWGTP, list(all_roc$RACE2), sum)
+    #RACE2: 1=White, 2=Black, 3=Hispanic, 4=Other
+
+# Generate length of time in rental unit (MV) amended category values (MV2)
+all_roc$MV2 = ifelse(all_roc$MV %in% 4:7, 4, all_roc$MV)
+tapply(all_roc$PWGTP, list(all_roc$MV2), sum)
+    # 1=12 mos or less; 2=13-23 mos; 3=2-4 years; 4=5+ years
 
 # Generate categories for employment status in merged data
 # ESR (employment status recode)
@@ -1519,6 +2578,428 @@ z <- rent_hoh %>% filter(MV %in% 5:7)
 tapply(z$PWGTP, list(z$age_cat_2), sum)
 prop.table(tapply(z$PWGTP, list(z$age_cat_2), sum))
 
+#------------------------- STANDARD ERRORS - All rental HOHs -------------------
+# User Specifications
+var <- "age_cat_2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: Younger than 30
+x <- rent_hoh %>% filter(age_cat_2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 30-50 years old
+x <- rent_hoh %>% filter(age_cat_2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 50-70 years old
+x <- rent_hoh %>% filter(age_cat_2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: 70+ years
+x <- rent_hoh %>% filter(age_cat_2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 12 mos or less --------
+rent_hoh_LT12 <- rent_hoh %>% filter(MV==1)
+
+# User Specifications
+var <- "age_cat_2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh_LT12"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh_LT12
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: Younger than 30
+x <- rent_hoh_LT12 %>% filter(age_cat_2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 30-50 years old
+x <- rent_hoh_LT12 %>% filter(age_cat_2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 50-70 years old
+x <- rent_hoh_LT12 %>% filter(age_cat_2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: 70+ years
+x <- rent_hoh_LT12 %>% filter(age_cat_2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 13 to 23 mos ----------
+rent_hoh_13to23 <- rent_hoh %>% filter(MV==2)
+
+# User Specifications
+var <- "age_cat_2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh_13to23"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh_13to23
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: Younger than 30
+x <- rent_hoh_13to23 %>% filter(age_cat_2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 30-50 years old
+x <- rent_hoh_13to23 %>% filter(age_cat_2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 50-70 years old
+x <- rent_hoh_13to23 %>% filter(age_cat_2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: 70+ years
+x <- rent_hoh_13to23 %>% filter(age_cat_2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 2-4 years -------------
+rent_hoh_2to4 <- rent_hoh %>% filter(MV==3)
+
+# User Specifications
+var <- "age_cat_2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh_2to4"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh_2to4
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: Younger than 30
+x <- rent_hoh_2to4 %>% filter(age_cat_2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 30-50 years old
+x <- rent_hoh_2to4 %>% filter(age_cat_2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 50-70 years old
+x <- rent_hoh_2to4 %>% filter(age_cat_2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: 70+ years
+x <- rent_hoh_2to4 %>% filter(age_cat_2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 5+ years --------------
+rent_hoh_MT5 <- rent_hoh %>% filter(MV==4)
+
+# User Specifications
+var <- "age_cat_2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh_MT5"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh_MT5
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: Younger than 30
+x <- rent_hoh_MT5 %>% filter(age_cat_2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 30-50 years old
+x <- rent_hoh_MT5 %>% filter(age_cat_2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: 50-70 years old
+x <- rent_hoh_MT5 %>% filter(age_cat_2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: 70+ years
+x <- rent_hoh_MT5 %>% filter(age_cat_2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
 
 #-------------------------------------------------------------------------------
 # Length of time in rental unit by race (MV, RACE)
@@ -1555,6 +3036,420 @@ z <- rent_hoh %>% filter(MV %in% 5:7)
 tapply(z$PWGTP, list(z$RACE), sum)
 prop.table(tapply(z$PWGTP, list(z$RACE), sum))
 
+#------------------------- STANDARD ERRORS - All rental HOHs -------------------
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: White
+x <- rent_hoh %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Black
+x <- rent_hoh %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Hispanic
+x <- rent_hoh %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: Other
+x <- rent_hoh %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 12 mos or less --------
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh_LT12"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh_LT12 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: White
+x <- rent_hoh_LT12 %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Black
+x <- rent_hoh_LT12 %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Hispanic
+x <- rent_hoh_LT12 %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: Other
+x <- rent_hoh_LT12 %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 13 to 23 mos ----------
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh_13to23"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh_13to23 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: White
+x <- rent_hoh_13to23  %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Black
+x <- rent_hoh_13to23  %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Hispanic
+x <- rent_hoh_13to23  %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: Other
+x <- rent_hoh_13to23  %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 2 to 4 years ----------
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh_2to4"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh_2to4 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: White
+x <- rent_hoh_2to4  %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Black
+x <- rent_hoh_2to4  %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Hispanic
+x <- rent_hoh_2to4  %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: Other
+x <- rent_hoh_2to4  %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 5+ years --------------
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_hoh_MT5"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_hoh_MT5
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: White
+x <- rent_hoh_MT5  %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Black
+x <- rent_hoh_MT5  %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Hispanic
+x <- rent_hoh_MT5  %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: Other
+x <- rent_hoh_MT5  %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
 
 #-------------------------------------------------------------------------------
 # Length of time in rental unit by employment status (MV; EMP)
@@ -1606,6 +3501,946 @@ v <- z$EMP
 tapply(w, list(v), sum)
 prop.table(tapply(w, list(v), sum))
 
+#------------------------- STANDARD ERRORS - All rental HOHs -------------------
+rent_emp <- rent_hoh %>% filter(EMP %in% 1:4)
+
+# User Specifications
+var <- "EMP"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_emp"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_emp 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental HOHs: Full-Time
+x <- rent_emp %>% filter(EMP==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Part-Time
+x <- rent_emp %>% filter(EMP==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental HOHs: Unemployed
+x <- rent_emp %>% filter(EMP==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental HOHs: Out of Labor Force
+x <- rent_emp %>% filter(EMP==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 12 mos or less --------
+rent_emp_LT12 <- rent_emp %>% filter(MV2==1)
+
+# User Specifications
+var <- "EMP"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_emp_LT12"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_emp_LT12 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Full-time
+x <- rent_emp_LT12 %>% filter(EMP==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Part-time
+x <- rent_emp_LT12 %>% filter(EMP==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Unemployed
+x <- rent_emp_LT12 %>% filter(EMP==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Out of Labor Force
+x <- rent_emp_LT12 %>% filter(EMP==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 13 to 23 mos -----------
+rent_emp_13to23 <- rent_emp %>% filter(MV2==2)
+
+# User Specifications
+var <- "EMP"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_emp_13to23"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_emp_13to23 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Full-time
+x <- rent_emp_13to23 %>% filter(EMP==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Part-time
+x <- rent_emp_13to23 %>% filter(EMP==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Unemployed
+x <- rent_emp_13to23 %>% filter(EMP==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Out of Labor Force
+x <- rent_emp_13to23 %>% filter(EMP==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 2 to 4 years -----------
+rent_emp_2to4 <- rent_emp %>% filter(MV2==3)
+
+# User Specifications
+var <- "EMP"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_emp_2to4"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_emp_2to4 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Full-time
+x <- rent_emp_2to4 %>% filter(EMP==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Part-time
+x <- rent_emp_2to4 %>% filter(EMP==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Unemployed
+x <- rent_emp_2to4 %>% filter(EMP==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Out of Labor Force
+x <- rent_emp_2to4 %>% filter(EMP==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rental HOHs 5+ years --------------
+rent_emp_MT5 <- rent_emp %>% filter(MV2==4)
+
+# User Specifications
+var <- "EMP"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_emp_MT5"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental HOHs
+all <- rent_emp_MT5 
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Full-time
+x <- rent_emp_MT5 %>% filter(EMP==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Part-time
+x <- rent_emp_MT5 %>% filter(EMP==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Unemployed
+x <- rent_emp_MT5 %>% filter(EMP==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Out of Labor Force
+x <- rent_emp_MT5 %>% filter(EMP==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#-------------------------------------------------------------------------------
+# RACE: Race of All Renter HHs
+#-------------------------------------------------------------------------------
+# RACE variable
+# 1 = White alone; 2 = Black alone; 3 = American Indian alone; 4 = Alaska Native alone
+# 5 = American Indian & Alaskan Native; 6 = Asian alone; 7 = Native Hawaiian / Pacific Islander alone
+# 8 = Some other race alone; 9 = Two or more races; 10 = Hispanic
+# (Categories for race generated in previous section in merged data)
+
+# Race proportions in Rochester population
+prop.table(tapply(all_roc$PWGTP, list(all_roc$RACE), sum))
+# 36.6% White, 38.3% Black, 18.4% Hispanic
+
+# For now I'll look at the population. I need to figure out how to collapse at the
+# HH level after creating the RACE variable, to do the HH analysis (will be more accurate)
+
+# Race of renter household population
+tapply(rent_all$PWGTP, list(rent_all$RACE), sum)
+prop.table(tapply(rent_all$PWGTP, list(rent_all$RACE), sum))
+
+# Race of all rent burdened population (>=30% income)
+tapply(rent_bur_all$PWGTP, list(rent_bur_all$RACE), sum)
+prop.table(tapply(rent_bur_all$PWGTP, list(rent_bur_all$RACE), sum))
+
+# Race of non rent-burdened population (<30% income)
+tapply(rent_bur_non$PWGTP, list(rent_bur_non$RACE), sum)
+prop.table(tapply(rent_bur_non$PWGTP, list(rent_bur_non$RACE), sum))
+
+# Race of slightly rent burdened population (>=30% and <50% income)
+tapply(rent_bur_slight$PWGTP, list(rent_bur_slight$RACE), sum)
+prop.table(tapply(rent_bur_slight$PWGTP, list(rent_bur_slight$RACE), sum))
+
+# Race of severely rent burdened population (>=50% income)
+tapply(rent_bur_severe$PWGTP, list(rent_bur_severe$RACE), sum)
+prop.table(tapply(rent_bur_severe$PWGTP, list(rent_bur_severe$RACE), sum))
+
+#------------------------- STANDARD ERRORS - All rental pop. -------------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_all"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All rental pop
+all <- rent_all
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental pop: White
+x <- rent_all %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# All rental pop: Black
+x <- rent_all %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# All rental pop: Hispanic
+x <- rent_all %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# All rental pop: Other race
+x <- rent_all %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
+
+#------------------------- STANDARD ERRORS - Any rent burdened pop. ------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_all"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Rent burdened pop
+all <- rent_bur_all
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Rent burdened pop: White
+x <- rent_bur_all %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rent burdened pop: Black
+x <- rent_bur_all %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rent burdened pop: Hispanic
+x <- rent_bur_all %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rent burdened pop: Other race
+x <- rent_bur_all %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
+
+#------------------------- STANDARD ERRORS - Non rent burdened pop. ------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_non"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Non rent burdened pop
+all <- rent_bur_non
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Non rent burdened pop: White
+x <- rent_bur_non %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Non rent burdened pop: Black
+x <- rent_bur_non %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Non rent burdened pop: Hispanic
+x <- rent_bur_non %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Non rent burdened pop: Other race
+x <- rent_bur_non %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
+
+#------------------------- STANDARD ERRORS - Rent burdened pop. ----------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_slight"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Rent burdened pop
+all <- rent_bur_slight
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Rent burdened pop: White
+x <- rent_bur_slight %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rent burdened pop: Black
+x <- rent_bur_slight %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rent burdened pop: Hispanic
+x <- rent_bur_slight %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Rent burdened pop: Other race
+x <- rent_bur_slight %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
+
+#------------------------- STANDARD ERRORS - Severely rent burdened pop. -------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_severe"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Severely rent burdened pop
+all <- rent_bur_severe
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Severely rent burdened pop: White
+x <- rent_bur_severe %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Severely rent burdened pop: Black
+x <- rent_bur_severe %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Severely rent burdened pop: Hispanic
+x <- rent_bur_severe %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                 
+
+# Severely rent burdened pop: Other race
+x <- rent_bur_severe %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+prop <- (pt.est/pt.est_all)
+ci90_prop <- c(prop-(1.64*se_prop), prop+(1.64*se_prop))                     
+ci95_prop <- c(prop-(1.96*se_prop), prop+(1.96*se_prop)) #                
 
 #-------------------------------------------------------------------------------
 # AGEP: Age of Single-Renter HHs
@@ -1615,6 +4450,7 @@ hh_single <- all_roc %>% filter((HHT==4 | HHT==6) & TEN==3)
 hh_single_f <- all_roc %>% filter(HHT==6 & TEN==3)
 hh_single_m <- all_roc %>%  filter(HHT==4 & TEN ==3)
 
+hh_single_2 <- all_roc %>% filter((HHT==4 | HHT==6) & TEN==3 & GRPIP_cat %in% 1:6)
 # Single HHs rent-burden categories
 rent_bur_all_s <- rent_bur_all %>% filter(HHT==4 | HHT==6)
 rent_bur_non_s <- rent_bur_non %>% filter(HHT==4 | HHT==6)
@@ -1707,49 +4543,1131 @@ tapply(rent_bur_severe_sm$PWGTP, list(rent_bur_severe_sm$age_cat), sum)
 prop.table(tapply(rent_bur_severe_sm$PWGTP, list(rent_bur_severe_sm$age_cat), sum))
 
 
-
 #-------------------------------------------------------------------------------
-# RACE: Race of All Renter HHs
+# RACE: Race of Single Renter HHs
 #-------------------------------------------------------------------------------
-# RACE variable
-# 1 = White alone; 2 = Black alone; 3 = American Indian alone; 4 = Alaska Native alone
-# 5 = American Indian & Alaskan Native; 6 = Asian alone; 7 = Native Hawaiian / Pacific Islander alone
-# 8 = Some other race alone; 9 = Two or more races; 10 = Hispanic
-# (Categories for race generated in previous section in merged data)
 
-# Race proportions in Rochester population
-prop.table(tapply(all_roc$PWGTP, list(all_roc$RACE), sum))
-       # 36.6% White, 38.3% Black, 18.4% Hispanic
+#-------------------------- All single renter HHs
+d <- hh_single
 
-# For now I'll look at the population. I need to figure out how to collapse at the
-# HH level after creating the RACE variable, to do the HH analysis (will be more accurate)
+# All single-rental HHs
+z <- d
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
 
-# Race of renter household population
-tapply(rent_all$PWGTP, list(rent_all$RACE), sum)
-prop.table(tapply(rent_all$PWGTP, list(rent_all$RACE), sum))
+# Any rent-burdened single-rental HHs
+z <- rent_bur_all_s
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
 
-# Race of all rent burdened population (>=30% income)
-tapply(rent_bur_all$PWGTP, list(rent_bur_all$RACE), sum)
-prop.table(tapply(rent_bur_all$PWGTP, list(rent_bur_all$RACE), sum))
+# Non rent-burdened single-rental HHs
+z <- rent_bur_non_s
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
 
-# Race of non rent-burdened population (<30% income)
-tapply(rent_bur_non$PWGTP, list(rent_bur_non$RACE), sum)
-prop.table(tapply(rent_bur_non$PWGTP, list(rent_bur_non$RACE), sum))
+# Rent-burdened single-rental HHs
+z <- rent_bur_slight_s
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
 
-# Race of slightly rent burdened population (>=30% and <50% income)
-tapply(rent_bur_slight$PWGTP, list(rent_bur_slight$RACE), sum)
-prop.table(tapply(rent_bur_slight$PWGTP, list(rent_bur_slight$RACE), sum))
+# Severely rent-burdened single-rental HHs
+z <- rent_bur_severe_s
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
 
-# Race of severely rent burdened population (>=50% income)
-tapply(rent_bur_severe$PWGTP, list(rent_bur_severe$RACE), sum)
-prop.table(tapply(rent_bur_severe$PWGTP, list(rent_bur_severe$RACE), sum))
+#-------------------------- Female single renter HHs
+d <- hh_single_f
 
+# All single-rental HHs
+z <- d
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
 
-# Race of single renter HHs (see section HHT above)
-prop.table(tapply(hh_single$PWGTP, list(hh_single$RACE), sum))
+# Any rent-burdened single-rental HHs
+z <- rent_bur_all_sf
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
 
-# Race of rent-burdened single renter HHs
-prop.table(tapply(rent_bur_single$PWGTP, list(rent_bur_single$RACE), sum))
+# Non rent-burdened single-rental HHs
+z <- rent_bur_non_sf
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
+
+# Rent-burdened single-rental HHs
+z <- rent_bur_slight_sf
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
+
+# Severely rent-burdened single-rental HHs
+z <- rent_bur_severe_sf
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
+
+#-------------------------- Male single renter HHs
+d <- hh_single_m
+
+# All single-rental HHs
+z <- d
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
+
+# Any rent-burdened single-rental HHs
+z <- rent_bur_all_sm
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
+
+# Non rent-burdened single-rental HHs
+z <- rent_bur_non_sm
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
+
+# Rent-burdened single-rental HHs
+z <- rent_bur_slight_sm
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
+
+# Severely rent-burdened single-rental HHs
+z <- rent_bur_severe_sm
+w <- z$PWGTP
+v <- z$RACE
+tapply(w, list(v), sum)
+prop.table(tapply(w, list(v), sum))
+
+#------------------------- STANDARD ERRORS - All single-renter HHs -------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "hh_single"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All single-renter HHs
+all <- hh_single_2
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All rental pop: White
+x <- hh_single %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental pop: Black
+x <- hh_single %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All rental pop: Hispanic
+x <- hh_single %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All rental pop: Other race
+x <- hh_single %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Non rent burdened HHs -------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_non_s"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Non rent-burdened single-renter HHs
+all <- rent_bur_non_s
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Non rent-burdened single-renter HHs: White
+x <- rent_bur_non_s %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Non rent-burdened single-renter HHs: Black
+x <- rent_bur_non_s %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Non rent-burdened single-renter HHs: Hispanic
+x <- rent_bur_non_s %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Non rent-burdened single-renter HHs: Other race
+x <- rent_bur_non_s %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Rent burdened HHs -----------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_slight_s"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Rent-burdened single-renter HHs
+all <- rent_bur_slight_s
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Rent-burdened single-renter HHs: White
+x <- rent_bur_slight_s %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Rent-burdened single-renter HHs: Black
+x <- rent_bur_slight_s %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Rent-burdened single-renter HHs: Hispanic
+x <- rent_bur_slight_s %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Rent-burdened single-renter HHs: Other race
+x <- rent_bur_slight_s %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - Severely rent burdened HHs --------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_severe_s"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Severely rent-burdened single-renter HHs
+all <- rent_bur_severe_s
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Severely rent-burdened single-renter HHs: White
+x <- rent_bur_severe_s %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Severely rent-burdened single-renter HHs: Black
+x <- rent_bur_severe_s %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Severely rent-burdened single-renter HHs: Hispanic
+x <- rent_bur_severe_s %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Severely rent-burdened single-renter HHs: Other race
+x <- rent_bur_severe_s %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - FEMALE single-renter HHs -------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "hh_single_f"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All HHs
+all <- hh_single_f
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All HHs: White
+x <- hh_single_f %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All HHs: Black
+x <- hh_single_f %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All HHs: Hispanic
+x <- hh_single_f %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All HHs: Other race
+x <- hh_single_f %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - FEMALE non rent burdened HHs --------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_non_sf"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Non rent-burdened single-renter HHs
+all <- rent_bur_non_sf
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Non rent-burdened single-renter HHs: White
+x <- rent_bur_non_sf %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Non rent-burdened single-renter HHs: Black
+x <- rent_bur_non_sf %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Non rent-burdened single-renter HHs: Hispanic
+x <- rent_bur_non_sf %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Non rent-burdened single-renter HHs: Other race
+x <- rent_bur_non_sf %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - FEMALE Rent burdened HHs ----------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_slight_sf"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Rent-burdened single-renter HHs
+all <- rent_bur_slight_sf
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Rent-burdened single-renter HHs: White
+x <- rent_bur_slight_sf %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Rent-burdened single-renter HHs: Black
+x <- rent_bur_slight_sf %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Rent-burdened single-renter HHs: Hispanic
+x <- rent_bur_slight_sf %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Rent-burdened single-renter HHs: Other race
+x <- rent_bur_slight_sf %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - FEMALE severely rent burdened HHs --------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_severe_sf"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Severely rent-burdened single-renter HHs
+all <- rent_bur_severe_sf
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Severely rent-burdened single-renter HHs: White
+x <- rent_bur_severe_sf %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Severely rent-burdened single-renter HHs: Black
+x <- rent_bur_severe_sf %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Severely rent-burdened single-renter HHs: Hispanic
+x <- rent_bur_severe_sf %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Severely rent-burdened single-renter HHs: Other race
+x <- rent_bur_severe_sf %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - MALE single-renter HHs -------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "hh_single_m"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# All HHs
+all <- hh_single_m
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# All HHs: White
+x <- hh_single_m %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All HHs: Black
+x <- hh_single_m %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# All HHs: Hispanic
+x <- hh_single_m %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# All HHs: Other race
+x <- hh_single_m %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - MALE non rent burdened HHs --------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_non_sm"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Non rent-burdened single-renter HHs
+all <- rent_bur_non_sm
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Non rent-burdened single-renter HHs: White
+x <- rent_bur_non_sm %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Non rent-burdened single-renter HHs: Black
+x <- rent_bur_non_sm %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Non rent-burdened single-renter HHs: Hispanic
+x <- rent_bur_non_sm %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Non rent-burdened single-renter HHs: Other race
+x <- rent_bur_non_sm %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - MALE Rent burdened HHs ------------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_slight_sm"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Rent-burdened single-renter HHs
+all <- rent_bur_slight_sm
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Rent-burdened single-renter HHs: White
+x <- rent_bur_slight_sm %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Rent-burdened single-renter HHs: Black
+x <- rent_bur_slight_sm %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Rent-burdened single-renter HHs: Hispanic
+x <- rent_bur_slight_sm %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Rent-burdened single-renter HHs: Other race
+x <- rent_bur_slight_sm %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+#------------------------- STANDARD ERRORS - MALE severely rent burdened HHs --------
+
+# User Specifications
+var <- "RACE2"                    
+cat <- "4"                      
+wgt <- "PWGTP"                   
+dta <- "rent_bur_severe_sm"            
+
+# Initialize vectors
+row_names <- vector()
+col_names <- c("Point Estimate","Standard Error","95% CI Low", "95% CI High")
+list <- vector()
+
+# Prepare estimates, standard errors, and confidence intervals
+for (val in 1:cat) {
+  # Prepare unique names
+  est <- paste0(var,val)
+  est.se <- paste0(var,val,"_se")
+  est.ci95 <- paste0(var,val,"_ci95")
+  row_names <- c(row_names, est)
+  
+  # Compute point estimate
+  assign(est, sum(ifelse(get(dta)[[var]]==val,get(dta)[[wgt]],0)))
+  
+  # Select appropriate replicate weights
+  if (wgt == "WGTP") {
+    rep.names <- wrep.names
+  } else if (wgt == "PWGTP") {
+    rep.names <- prep.names
+  }
+  
+  # Compute replicate weight estimates
+  rep.ests <- sapply(rep.names, function(n) 
+    sum(ifelse(get(dta)[[var]]==val,get(dta)[[n]],0)))
+  
+  # Compute standard error
+  assign(est.se, sqrt((4/80) * sum((rep.ests - get(est))^2)))
+  
+  # Compute 95% confidence interval
+  assign(est.ci95, c(get(est)-(1.96*get(est.se)), get(est)+(1.96*get(est.se))))
+  
+  # Combine in list
+  list <- c(list, get(est), get(est.se), get(est.ci95))
+}
+
+# Generate Table
+se_table <- matrix(list, nrow = as.numeric(cat), ncol = 4, dimnames = list(row_names, col_names), byrow = TRUE)
+se_table
+
+# ------------------------------- SEs of Proportions
+# Severely rent-burdened single-renter HHs
+all <- rent_bur_severe_sm
+pt.est_all <- sum(all$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(all[[n]]))
+se_all <- sqrt((4/80) * sum((rep.ests - pt.est_all)^2))
+
+# Severely rent-burdened single-renter HHs: White
+x <- rent_bur_severe_sm %>% filter(RACE2==1)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Severely rent-burdened single-renter HHs: Black
+x <- rent_bur_severe_sm %>% filter(RACE2==2)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
+
+# Severely rent-burdened single-renter HHs: Hispanic
+x <- rent_bur_severe_sm %>% filter(RACE2==3)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) #
+
+# Severely rent-burdened single-renter HHs: Other race
+x <- rent_bur_severe_sm %>% filter(RACE2==4)
+pt.est <- sum(x$PWGTP)
+rep.ests <- sapply(rep.names, function(n) sum(x[[n]]))
+se <- sqrt((4/80) * sum((rep.ests - pt.est)^2))
+se_prop <- (1/pt.est_all)*(sqrt(se^2-((pt.est^2/pt.est_all^2)*se_all^2))) # 
 
 
 #-------------------------------------------------------------------------------
@@ -1928,22 +5846,22 @@ hh_female_lf$ind_cat <- cut(hh_female_lf$INDP, breaks = c(0, 300, 500, 700, 1000
                             labels = c("AGR", "EXT", "UTL", "CON", "MFG", "WHL", "RET", "TRN", "INF", "FIN", "PRF", "EDU", "MED", "SCA", "ENT", "SRV", "ADM", "MIL", "UEM"), right = TRUE)
 
 # Create subsets of female single-headed HHs based on rent burden
-hh_female_lf_bur <- hh_female_lf %>% filter(GRPIP_cat %in% 2:5)
+hh_female_lf_bur <- hh_female_lf %>% filter(GRPIP_cat %in% 2:6)
+hh_female_lf_bur_no <- hh_female_lf %>% filter(GRPIP_cat==1)
 hh_female_lf_bur_slight <- hh_female_lf %>% filter(GRPIP_cat==2)
-hh_female_lf_bur_high <- hh_female_lf %>% filter(GRPIP_cat %in% 3:5)
-hh_female_lf_bur_severe <- hh_female_lf %>% filter(GRPIP_cat==6)
+hh_female_lf_bur_severe <- hh_female_lf %>% filter(GRPIP_cat %in% 3:6)
 
 # All single-female-headed-HHs in LF occupation categories
 tapply(hh_female_lf$PWGTP, list(hh_female_lf$ind_cat), sum)
 
-# Rent-burdened single-female-headed-HHs in LF occupation categories
+# Any rent-burdened single-female-headed-HHs in LF occupation categories
 tapply(hh_female_lf_bur$PWGTP, list(hh_female_lf_bur$ind_cat), sum)
+
+# Non rent-burdened single-female-headed-HHs in LF occupation categories
+tapply(hh_female_lf_bur_no$PWGTP, list(hh_female_lf_bur_no$ind_cat), sum)
 
 # Slightly rent-burdened single-female-headed-HHs in LF occupation categories
 tapply(hh_female_lf_bur_slight$PWGTP, list(hh_female_lf_bur_slight$ind_cat), sum)
-
-# Highly rent-burdened single-female-headed-HHs in LF occupation categories
-tapply(hh_female_lf_bur_high$PWGTP, list(hh_female_lf_bur_high$ind_cat), sum)
 
 # Severely rent-burdened single-female-headed-HHs in LF occupation categories
 tapply(hh_female_lf_bur_severe$PWGTP, list(hh_female_lf_bur_severe$ind_cat), sum)
@@ -1978,13 +5896,6 @@ prop.table(tapply(med$PWGTP, list(med$GRPIP_cat), sum)) # 40.5% are rent burdene
 sca <- all_roc %>% filter(ind_cat=="SCA")
 tapply(sca$PWGTP, list(sca$GRPIP_cat), sum)
 prop.table(tapply(sca$PWGTP, list(sca$GRPIP_cat), sum)) # 47.1% are rent burdened
-
-# Standard Error Example
-own <- filter(hh_roc, VACS==1)
-pt.est <- sum(own$WGTP)
-rep.names <- paste0('WGTP', 1:80)
-rep.ests <- sapply(rep.names, function(n) sum(own[[n]]))
-sqrt((4/80) * sum((rep.ests - pt.est)^2))
 
 
 #-------------------------------------------------------------------------------
@@ -2188,4 +6099,9 @@ pumsd_all <-
   )
 
 #*************************************
+
+
+
+
+
 
